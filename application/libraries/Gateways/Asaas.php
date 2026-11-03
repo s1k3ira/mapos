@@ -1,8 +1,11 @@
 <?php
 
 use CodePhix\Asaas\Asaas as AsaasSdk;
+use Libraries\Gateways\AsaasConexao;
 use Libraries\Gateways\BasePaymentGateway;
 use Libraries\Gateways\Contracts\PaymentGateway;
+use Libraries\Gateways\Exceptions\GatewayIndisponivelException;
+use Libraries\Gateways\Exceptions\GatewayRecusouException;
 
 class Asaas extends BasePaymentGateway
 {
@@ -28,6 +31,51 @@ class Asaas extends BasePaymentGateway
             $asaasConfig['credentials']['api_key'],
             $asaasConfig['production'] === true ? 'producao' : 'homologacao'
         );
+        $this->configurarTimeout((int) ($asaasConfig['timeout'] ?? 10));
+    }
+
+    /** Troca a conexão do SDK por uma com tempo máximo de conexão e de resposta. */
+    protected function configurarTimeout(int $segundos): void
+    {
+        $conexao = new AsaasConexao(
+            $this->asaasApi->Cobranca()->http->api_key,
+            $this->asaasApi->Cobranca()->http->api_status ? 'homologacao' : 'producao',
+            $segundos
+        );
+        (new \ReflectionProperty(AsaasSdk::class, 'connection'))->setValue($this->asaasApi, $conexao);
+    }
+
+    protected function nomeDoGateway(): string
+    {
+        return 'Asaas';
+    }
+
+    /** Resposta do SDK: errors = recusa do provedor; falso ou erro de transporte = indisponível. */
+    private function conferirResposta($resposta, string $operacao)
+    {
+        if (! $resposta || ! empty($resposta->error)) {
+            throw new GatewayIndisponivelException();
+        }
+        if (! empty($resposta->errors)) {
+            throw new GatewayRecusouException(
+                in_array($operacao, ['criar_boleto', 'criar_link', 'criar_cliente'], true)
+                    ? 'O Asaas recusou os dados da cobrança. Confira CPF/CNPJ, e-mail e endereço do cliente.'
+                    : 'O Asaas recusou a operação. Confira os dados e tente novamente.'
+            );
+        }
+
+        return $resposta;
+    }
+
+    /** Chama o SDK, confere o retorno e devolve o objeto da resposta. */
+    private function chamarAsaas(string $operacao, $idCobranca, callable $chamada)
+    {
+        return $this->chamarGateway($operacao, $idCobranca, fn () => $this->conferirResposta($chamada(), $operacao));
+    }
+
+    private function descricaoDaCobranca($id, string $tipo): string
+    {
+        return $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";
     }
 
     public function cancelar($id)
@@ -38,9 +86,9 @@ class Asaas extends BasePaymentGateway
         }
 
         if ($cobranca->payment_method == 'boleto') {
-            $this->asaasApi->Cobranca()->delete($cobranca->charge_id);
+            $this->chamarAsaas('cancelar', $id, fn () => $this->asaasApi->Cobranca()->delete($cobranca->charge_id));
         } else {
-            $this->asaasApi->LinkPagamento()->delete($cobranca->charge_id);
+            $this->chamarAsaas('cancelar', $id, fn () => $this->asaasApi->LinkPagamento()->delete($cobranca->charge_id));
         }
 
         return $this->atualizarDados($id);
@@ -101,7 +149,7 @@ class Asaas extends BasePaymentGateway
         }
 
         if ($cobranca->payment_method == 'boleto') {
-            $result = $this->asaasApi->Cobranca()->getById($cobranca->charge_id);
+            $result = $this->chamarAsaas('atualizar', $id, fn () => $this->asaasApi->Cobranca()->getById($cobranca->charge_id));
         } else {
             throw new Exception('Devido à limitação da Asaas, somente é possível atualizar cobranças com boletos!');
         }
@@ -143,22 +191,13 @@ class Asaas extends BasePaymentGateway
         }
 
         if ($cobranca->payment_method == 'boleto') {
-            $result = $this->asaasApi->Cobranca()->confirmacao(
+            $this->chamarAsaas('confirmar', $id, fn () => $this->asaasApi->Cobranca()->confirmacao(
                 $cobranca->charge_id,
                 [
                     'paymentDate' => (new DateTime())->format('Y-m-d'),
                     'value' => round($cobranca->total / 100, 2),
                 ]
-            );
-            if ($result && ! empty($result->errors)) {
-                // A resposta da API inclui erros
-                foreach ($result->errors as $error) {
-                    throw new \Exception('Erro ao chamar Asaas.\n\n' . $error->description);
-                }
-            } elseif (! $result) {
-                // A chamada para a API falhou de alguma forma
-                throw new \Exception('Falha na chamada para a API Asaas');
-            }
+            ));
         } else {
             throw new Exception('Devido à limitação da Asaas, somente é possível confirmar cobranças com boletos!');
         }
@@ -191,24 +230,14 @@ class Asaas extends BasePaymentGateway
             'billingType' => 'BOLETO',
             'dueDate' => $expirationDate,
             'value' => $valor,
-            'description' => $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
+            'description' => $this->descricaoDaCobranca($id, $tipo),
             'externalReference' => $id,
             'postalService' => false,
         ];
 
-        $result = $this->asaasApi->Cobranca()->create($body);
+        $result = $this->chamarAsaas('criar_boleto', null, fn () => $this->asaasApi->Cobranca()->create($body));
 
-        if ($result && ! empty($result->errors)) {
-            // A resposta da API inclui erros
-            foreach ($result->errors as $error) {
-                throw new \Exception('Erro na criação da cobrança: ' . $error->description);
-            }
-        } elseif (! $result) {
-            // A chamada para a API falhou de alguma forma
-            throw new \Exception('Falha na chamada para a API Asaas');
-        }
-
-        $title = $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";
+        $title = $this->descricaoDaCobranca($id, $tipo);
         $data = [
             'barcode' => '',
             'link' => $result->invoiceUrl,
@@ -262,8 +291,8 @@ class Asaas extends BasePaymentGateway
         $expirationDate = (new DateTime())->add(new DateInterval($this->asaasConfig['boleto_expiration']));
         $expirationDate = ($expirationDate->format('Y-m-d'));
         $body = [
-            'name' => $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
-            'description' => $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
+            'name' => $this->descricaoDaCobranca($id, $tipo),
+            'description' => $this->descricaoDaCobranca($id, $tipo),
             'endDate' => $expirationDate,
             'value' => $valor,
             'billingType' => 'UNDEFINED',
@@ -273,18 +302,9 @@ class Asaas extends BasePaymentGateway
             'maxInstallmentCount' => 1,
         ];
 
-        $result = $this->asaasApi->LinkPagamento()->create($body);
-        if ($result && ! empty($result->errors)) {
-            // A resposta da API inclui erros
-            foreach ($result->errors as $error) {
-                throw new \Exception('Erro na criação da cobrança: ' . $error->description);
-            }
-        } elseif (! $result) {
-            // A chamada para a API falhou de alguma forma
-            throw new \Exception('Falha na chamada para a API Asaas');
-        }
+        $result = $this->chamarAsaas('criar_link', null, fn () => $this->asaasApi->LinkPagamento()->create($body));
 
-        $title = $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";
+        $title = $this->descricaoDaCobranca($id, $tipo);
         $data = [
             'expire_at' => $result->endDate,
             'charge_id' => $result->id,
@@ -327,12 +347,12 @@ class Asaas extends BasePaymentGateway
             return $cliente['asaas_id'];
         }
 
-        $result = $this->asaasApi->Cliente()->create([
+        $result = $this->chamarAsaas('criar_cliente', null, fn () => $this->asaasApi->Cliente()->create([
             'name' => $cliente['nomeCliente'],
             'email' => $cliente['email'],
-            'phone' => preg_replace('/[^0-9]/', '', $cliente['telefone']),
-            'mobilePhone' => preg_replace('/[^0-9]/', '', $cliente['celular']),
-            'cpfCnpj' => preg_replace('/[^0-9]/', '', $cliente['documento']),
+            'phone' => preg_replace('/[^0-9]/', '', (string) ($cliente['telefone'] ?? '')),
+            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($cliente['celular'] ?? '')),
+            'cpfCnpj' => preg_replace('/[^0-9]/', '', (string) ($cliente['documento'] ?? '')),
             'postalCode' => $cliente['cep'],
             'address' => $cliente['rua'],
             'addressNumber' => $cliente['numero'],
@@ -345,12 +365,7 @@ class Asaas extends BasePaymentGateway
             'notificationDisabled' => $this->asaasConfig['notify'] === false,
             'observations' => '',
             'groupName' => 'mapos',
-        ]);
-
-        if (! $result) {
-            // Lide com o caso em que $id é nulo
-            throw new \Exception('Erro ao criar cliente na Asaas!');
-        }
+        ]));
 
         $success = $this->ci->clientes_model->edit(
             'clientes',
