@@ -1,10 +1,53 @@
 <?php
 
+require_once __DIR__ . '/../libraries/Refresh_token.php';
+
 class Clientes_model extends CI_Model
 {
     public function __construct()
     {
         parent::__construct();
+    }
+
+    /**
+     * Troca a senha do cliente e derruba sessão web, access tokens e refresh
+     * tokens dele, tudo numa transação. False = nada mudou.
+     */
+    public function registrarTrocaDeSenha(int $idCliente, string $hash, bool $exigirTroca): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->set('senha', $hash)
+                ->set('senha_trocar', $exigirTroca ? 1 : 0)
+                ->set('sessao_versao', 'sessao_versao + 1', false)
+                ->set('token_versao', 'token_versao + 1', false)
+                ->where('idClientes', $idCliente)
+                ->update('clientes');
+            $alterou = $this->db->affected_rows() === 1;
+
+            if ($alterou) {
+                $this->refreshTokens()->revogarDoUsuario($idCliente, 'cliente');
+            }
+
+            if ($alterou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // Com db_debug ligado o CI já desfez a transação antes de lançar; o rollback abaixo vira no-op.
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=troca_senha_cliente id=%d', $idCliente));
+
+        return false;
+    }
+
+    protected function refreshTokens(): Refresh_token
+    {
+        return new Refresh_token(['db' => $this->db]);
     }
 
     public function get($table, $fields, $where = '', $perpage = 0, $start = 0, $one = false, $array = 'array')

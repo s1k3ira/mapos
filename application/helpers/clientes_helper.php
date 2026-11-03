@@ -11,6 +11,29 @@ if (! defined('CLIENTE_CAMPOS_TEXTO')) {
     ]);
 }
 
+if (! defined('CLIENTE_SENHA_ALFABETO')) {
+    // Sem I, O, l, o, 0 e 1: não se confundem quando a senha é lida ou digitada.
+    define('CLIENTE_SENHA_ALFABETO', 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789');
+}
+
+if (! function_exists('clienteSenhaAleatoria')) {
+    /** Senha forte gerada por CSPRNG (random_int). */
+    function clienteSenhaAleatoria(int $tamanho = 16): string
+    {
+        if ($tamanho < 12) {
+            throw new InvalidArgumentException('A senha aleatória tem pelo menos 12 caracteres.');
+        }
+
+        $maximo = strlen(CLIENTE_SENHA_ALFABETO) - 1;
+        $senha = '';
+        for ($i = 0; $i < $tamanho; $i++) {
+            $senha .= CLIENTE_SENHA_ALFABETO[random_int(0, $maximo)];
+        }
+
+        return $senha;
+    }
+}
+
 if (! function_exists('clienteDadosDoFormulario')) {
     /**
      * Dados da tabela clientes a partir do POST já validado.
