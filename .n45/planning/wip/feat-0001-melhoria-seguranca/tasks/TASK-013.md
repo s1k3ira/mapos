@@ -3,38 +3,40 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 18:46:56"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testApagaEventoDe91DiasEMantemODe89 tests/Unit/RetencaoTest.php
       text: limpar() apaga webhook_eventos de 91 dias e mantém o de 89, devolvendo ['webhook_eventos' => 1, 'api_refresh_tokens' => 0, 'email_queue' => 0]
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testApagaNoMaximoOLotePorTabela|testLoteInformadoLimitaAExclusao' tests/Unit/RetencaoTest.php
       text: Com 600 elegíveis apaga 500 (menores ids) por chamada e a segunda chamada apaga os 100 restantes; limpar(10) apaga 10
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRefreshTokensExpiradosOuRevogadosHaTrintaDias tests/Unit/RetencaoTest.php
       text: 'Refresh tokens: apaga expirado há 31 dias e revogado há 31 dias; mantém expirado há 29 dias e revogado há 2 dias'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEmailQueueApagaSoSentEFailedAntigos tests/Unit/RetencaoTest.php
       text: 'email_queue: apaga sent de 8 dias e failed de 31 dias; mantém sent de 6, failed de 29, pending e sending antigos'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTabelaInexistenteContaZero tests/Unit/RetencaoTest.php
       text: Tabela inexistente conta 0 e não impede as outras
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCicloRetryLogaARetencaoESaiZero tests/Unit/RetencaoTest.php
       text: Ciclo retry com retenção devolve 0 e loga 'retencao webhook_eventos=1 api_refresh_tokens=2 email_queue=3'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaRetencaoSaiUm tests/Unit/RetencaoTest.php
       text: Retenção lançando exceção faz o ciclo retry devolver 1 com log 'email_fila ciclo=retry erro='
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCicloProcessNaoChamaARetencao tests/Unit/RetencaoTest.php
       text: O ciclo process não chama a retenção
-    - done: false
+    - done: true
       test: '! grep -nE ''NOW\(\)|INTERVAL'' application/libraries/Retencao.php'
       text: Retencao calcula as datas no PHP, sem NOW() nem INTERVAL no SQL
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/EmailFilaTest.php
       text: A suíte da fila de e-mail continua verde com a assinatura estendida
 deps:
     - TASK-012
+diff_base: 67a51a93c91f7554394fcdd90f18215e25fdf9da
+diff_tip: cd93b696e101d83ec6a668280a154530531a4868
 files:
     - application/libraries/Retencao.php
     - application/controllers/Email.php
@@ -42,18 +44,22 @@ files:
 id: TASK-013
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome (backend)
+
+    - `Retencao` (`application/libraries/Retencao.php`): `__construct($opcoes = null)` (`['db'=>..., 'relogio'=>callable]`), `limpar(int $lote = 500): array{webhook_eventos:int, api_refresh_tokens:int, email_queue:int}`; constante `Retencao::LOTE_PADRAO = 500`. Hard delete em lote por tabela (menores ids primeiro); `$lote < 1` vira 1; tabela inexistente conta 0; erro de banco sobe como exceção. Prazos: `webhook_eventos.created_at` > 90 dias; `api_refresh_tokens.expira_em` ou `revogado_em` > 30 dias; `email_queue` `sent` > 7 dias e `failed` > 30 dias (`pending`/`sending` nunca). Datas calculadas no PHP.
+    - `Email::executarCiclo(string $ciclo, object $fila, ?object $retencao = null): int`: no ciclo `retry`, após a fila, chama `$retencao->limpar()` e loga `info` `retencao webhook_eventos=%d api_refresh_tokens=%d email_queue=%d`; exceção → log `error` `email_fila ciclo=retry erro=<classe>` e retorno 1. Ciclo `process` não chama a retenção; sem `$retencao` mantém o comportamento anterior. `Email::retry()` carrega a library `Retencao` e a injeta (cron `email/retry`, a cada 5 min).
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/RetencaoTest.php tests/Unit/EmailFilaTest.php
 title: Retenção de eventos, refresh tokens e fila no email/retry
-updated_at: "2026-11-03 18:46:56"
+updated_at: "2026-11-03 20:33:20"
 ---
 ## Contexto
 

@@ -3,76 +3,78 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 18:44:20"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMetodoDiferenteDePostResponde405 tests/Unit/WebhooksTest.php
       text: 'GET em webhook responde 405 com Allow: POST'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testAssinaturaMpInvalidaRecusaSemConsultarNemGravar|testMpTimestampForaDaJanelaRecusa|testSegredoEfiErradoRecusa|testTokenAsaasErradoRecusa' tests/Unit/WebhooksTest.php
       text: 'Segredo Efí errado, token Asaas errado, assinatura MP de outro segredo, sem x-signature e ts a 301 s respondem 401 {status: recusado}, sem chamar a consulta e sem linha em webhook_eventos'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSegredoVazioRecusaTudo tests/Unit/WebhooksTest.php
       text: MP_WEBHOOK_SECRET vazio responde 401 mesmo com assinatura calculada com a string vazia e loga 'webhook desabilitado gateway=mercadopago'
-    - done: false
+    - done: true
       test: test "$(grep -c 'hash_equals' application/controllers/Webhooks.php)" -ge 3
       text: A comparação de segredo, token e assinatura usa hash_equals nos três gateways
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPagamentoConfirmadoBaixaOLancamentoDaOs tests/Unit/WebhooksTest.php
       text: 'MP assinado com ts em milissegundos e data.id só na query é aceito: 200 aplicado, cobrança approved, lançamento 40 com baixado = 1 e data_pagamento de hoje, evento com processado_em e resultado aplicado, uma linha em logs'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMesmoEventoDuasVezesConsultaUmaVezEBaixaUmaVez tests/Unit/WebhooksTest.php
       text: 'Mesmo evento duas vezes: segunda resposta 200 repetido, consulta chamada uma vez, uma única baixa'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEventoSemProcessadoEmEReprocessado tests/Unit/WebhooksTest.php
       text: Evento com processado_em nulo (falha anterior) é reprocessado no reenvio e termina aplicado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testStatusDoCorpoEIgnoradoValeAConsulta tests/Unit/WebhooksTest.php
       text: Corpo dizendo approved com consulta devolvendo pending não baixa o lançamento
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testValorDivergenteNaoBaixa tests/Unit/WebhooksTest.php
       text: 'Valor consultado diferente de cobrancas.total: 200 divergente, sem baixa nem mudança de status, evento divergente e log ''webhook alerta divergencia'''
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testPagoNaoRegride|testSegundoEventoNaoAlteraDataDePagamento' tests/Unit/WebhooksTest.php
       text: Cobrança paga não regride para pendente e segundo evento distinto não altera data_pagamento (200 sem_efeito)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaBaixaDesfazTudoEResponde503 tests/Unit/WebhooksTest.php
       text: 'Falha simulada no UPDATE do lançamento: 503, status da cobrança e evento revertidos (sem processado_em)'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testConsultaIndisponivelResponde503|testConsultaRecusadaIgnora' tests/Unit/WebhooksTest.php
       text: Consulta lançando GatewayIndisponivelException responde 503 tente_novamente e não grava processado_em; GatewayRecusouException responde 200 ignorado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCobrancaDesconhecidaIgnora tests/Unit/WebhooksTest.php
       text: Cobrança desconhecida responde 200 ignorado e grava o evento com resultado ignorado e cobranca_id nulo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testCorpoGrandeResponde413|testAcimaDoLimiteResponde429' tests/Unit/WebhooksTest.php
       text: Corpo acima de 65536 bytes responde 413 e acima de WEBHOOK_RATE_LIMIT responde 429 com Retry-After
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPayloadIrrelevanteIgnoraSemConsultar tests/Unit/WebhooksTest.php
       text: MP com type diferente de payment, Asaas sem payment.id e Efí sem notification respondem 200 ignorado sem consultar
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPagamentoDeVendaBaixaOLancamentoDaVenda tests/Unit/WebhooksTest.php
       text: Venda paga baixa o lançamento de vendas.lancamentos_id
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRotasExistemComApiDesligada tests/Unit/WebhooksTest.php
       text: As rotas de webhook existem com API_ENABLED=false (fora do if da API)
-    - done: false
+    - done: true
       test: grep -qF "['api.*+', 'csp/report', 'webhooks/(efi/[^/]+|mercadopago|asaas)']" application/config/config.php
       text: csrf_exclude_uris exclui só as três rotas de webhook além das existentes
-    - done: false
+    - done: true
       test: '! grep -nE ''notification_url|curl_|https?://'' application/controllers/Webhooks.php'
       text: O controller não usa URL, host nem notification_url vindos do payload
-    - done: false
+    - done: true
       test: test "$(grep -cE '^\s*public function (efi|mercadopago|asaas)\(' application/controllers/Webhooks.php)" -eq 3 && test "$(grep -cE '^\s*public function ' application/controllers/Webhooks.php)" -eq 4
       text: Só os três endpoints são públicos no controller (atender e helpers protegidos)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLogNaoTemSegredos tests/Unit/WebhooksTest.php
       text: O log do webhook nunca contém o segredo da Efí, o token do Asaas nem o segredo do MP
-    - done: false
+    - done: true
       test: grep -qx 'ASAAS_WEBHOOK_TOKEN=' application/.env.example && grep -qx 'WEBHOOK_RATE_LIMIT=120' application/.env.example && application/vendor/bin/phpunit tests/Unit/CookieSeguroTest.php
       text: .env.example lista ASAAS_WEBHOOK_TOKEN vazio e WEBHOOK_RATE_LIMIT=120 e a suíte que faz parse do arquivo continua verde
 deps:
     - TASK-002
     - TASK-003
     - TASK-010
+diff_base: ce93744eb280e3c6cda3cbded5aa422f2a3642a3
+diff_tip: c492bfbc8d3e4aaa1a17f9c3f985aadfdfa531ba
 files:
     - application/controllers/Webhooks.php
     - application/models/Webhooks_model.php
@@ -83,18 +85,28 @@ files:
 id: TASK-011
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — webhooks de pagamento (controller público `Webhooks`, sem sessão/CSRF/API)**
+
+    Endpoints (JSON, `Cache-Control: no-store`):
+    - `POST /webhooks/efi/{segredo}` (form `notification=<token>`), `POST /webhooks/mercadopago?data.id=&type=payment` (headers `x-signature`, `x-request-id`), `POST /webhooks/asaas` (header `asaas-access-token`).
+    - 200 `{status: aplicado|repetido|ignorado|divergente|sem_efeito}` · 401 `{status: recusado}` (segredo/token/assinatura inválido ou ausente) · 405 + `Allow: POST` · 413 (corpo > 65536 B) · 429 + `Retry-After` (`WEBHOOK_RATE_LIMIT`, padrão 120/min/IP, escopo `webhook`) · 503 `{status: tente_novamente}` (consulta/banco/rollback; evento fica sem `processado_em` e é reprocessado).
+    - Rotas em `routes.php` fora do `if` da API; `csrf_exclude_uris` inclui `webhooks/(efi/[^/]+|mercadopago|asaas)`.
+
+    Comportamento: autentica com `hash_equals` antes de tudo; reconsulta o pagamento via `consultarPagamento()` (corpo nunca é confiado); idempotência por `webhook_eventos(gateway, evento_id)`; valor divergente de `cobrancas.total` não baixa; pago nunca regride; baixa transacional de `os.lancamento`/`vendas.lancamentos_id` (`baixado=1`, `data_pagamento` = hoje) e auditoria em `logs` (`usuario=webhook:<gateway>`).
+
+    Símbolos: `Webhooks_model::{buscarEvento, cobrancaPorCharge, registrarResultado, aplicarPagamento ('aplicado'|'sem_efeito'|'repetido'|'falha'), auditar}`. Env novas: `ASAAS_WEBHOOK_TOKEN`, `WEBHOOK_RATE_LIMIT` (+ `EFI_WEBHOOK_SECRET`, `MP_WEBHOOK_SECRET` consumidas).
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/WebhooksTest.php tests/Unit/CookieSeguroTest.php
 title: Webhooks de pagamento com autenticação, idempotência e baixa transacional
-updated_at: "2026-11-03 18:44:20"
+updated_at: "2026-11-03 20:35:32"
 ---
 ## Contexto
 

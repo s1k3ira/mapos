@@ -3,47 +3,49 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 18:48:13"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRecusouViraQuatroVinteDoisComAMensagem tests/Unit/CobrancasErrosTest.php
       text: GatewayRecusouException vira [422, <mensagem dela>] em cobrancaRespostaDeFalha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testIndisponivelSempreUsaAMensagemGenerica tests/Unit/CobrancasErrosTest.php
       text: GatewayIndisponivelException vira [502, 'O provedor de pagamento não respondeu. Tente novamente em instantes.'] mesmo com outro texto na exceção
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testValidacaoLocalViraQuatroVinteDois tests/Unit/CobrancasErrosTest.php
       text: \Exception exata (validação local, ex. 'Valor inválido!') vira [422, mensagem]
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaTecnicaViraQuinhentosComTextoPadrao tests/Unit/CobrancasErrosTest.php
       text: TypeError e RuntimeException técnicos viram [500, <texto padrão>] com log 'cobranca falha erro=<classe>' e sem a mensagem da exceção no retorno nem no log
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoComSucesso tests/Unit/CobrancasErrosTest.php
       text: excluirEmTransacao(7) apaga a cobrança existente e devolve true
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeCobrancaInexistente tests/Unit/CobrancasErrosTest.php
       text: excluirEmTransacao de cobrança inexistente devolve false e loga 'transacao rollback operacao=excluir_cobranca id=999'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoComFalhaDoBancoMantemACobranca tests/Unit/CobrancasErrosTest.php
       text: 'Falha do banco no DELETE: excluirEmTransacao devolve false, a cobrança continua e o rollback é logado'
-    - done: false
+    - done: true
       test: '! grep -n ''getMessage()'' application/controllers/Cobrancas.php'
       text: O controller não repassa mensagem de exceção diretamente (só pelo helper)
-    - done: false
+    - done: true
       test: test "$(grep -c 'cobrancaRespostaDeFalha(' application/controllers/Cobrancas.php)" -ge 3
       text: adicionar(), agirSobreCobranca() e excluir() usam cobrancaRespostaDeFalha
-    - done: false
+    - done: true
       test: test "$(grep -cE "json_encode\(\['result' => false" application/controllers/Cobrancas.php)" -ge 5
       text: Respostas JSON de erro de adicionar() carregam result false (403, 400, 422, 502, 500)
-    - done: false
+    - done: true
       test: grep -q 'excluirEmTransacao(' application/controllers/Cobrancas.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Cobrancas.php
       text: excluir() usa a exclusão transacional e a mensagem 'Não foi possível excluir. Nada foi alterado.'
-    - done: false
+    - done: true
       test: '! grep -n ''Unauthorized'' application/controllers/Cobrancas.php'
       text: O mapeamento antigo de 'Unauthorized' saiu do controller
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/CobrancasTest.php tests/Unit/CobrancaValorTest.php
       text: A suíte de cobranças existente continua verde
 deps:
     - TASK-005
+diff_base: 390dc3e5439b943144cd36585ff0c1f61df11c3c
+diff_tip: 67a51a93c91f7554394fcdd90f18215e25fdf9da
 files:
     - application/helpers/financeiro_helper.php
     - application/controllers/Cobrancas.php
@@ -52,18 +54,25 @@ files:
 id: TASK-014
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — contrato entregue**
+
+    - `cobrancaRespostaDeFalha(\Throwable $e, string $padrao): array{0:int,1:string}` em `application/helpers/financeiro_helper.php`: `GatewayRecusouException` -> `[422, mensagem]`; `GatewayIndisponivelException` -> `[502, MENSAGEM]` (sempre a constante); `\Exception` exata -> `[422, mensagem]`; qualquer outro `\Throwable` -> `[500, $padrao]` + log `cobranca falha erro=<classe>` (sem a mensagem).
+    - `Cobrancas_model::excluirEmTransacao(int $idCobranca): bool`: true só com 1 linha afetada e transação ok; senão rollback + log `transacao rollback operacao=excluir_cobranca id=<id>` e false.
+    - `POST /cobrancas/adicionar`: sucesso inalterado (`json_encode($cobranca)`); erros sempre `{result:false, message}` — 403 (permissão), 400 (validação, cobrança existente, gateway inválido), 422 (recusa/validação local), 502 (indisponível), 500 (`Não foi possível gerar a cobrança. Tente novamente.`).
+    - `agirSobreCobranca()` (atualizar/confirmarPagamento/cancelar/enviarEmail): flashdata `error` via helper.
+    - `POST /cobrancas/excluir`: cancelamento no gateway fora da transação (falha -> flashdata via helper, nada apagado); exclusão local via `excluirEmTransacao` (false -> `Não foi possível excluir. Nada foi alterado.`).
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/CobrancasErrosTest.php tests/Unit/CobrancasTest.php tests/Unit/CobrancaValorTest.php
 title: 'Cobranças: respostas 422/502, mensagens amigáveis e exclusão em transação'
-updated_at: "2026-11-03 18:48:13"
+updated_at: "2026-11-03 20:32:29"
 ---
 ## Contexto
 

@@ -87,7 +87,7 @@ phases:
             - TASK-010
           id: TASK-011
           persona: backend
-          status: pending
+          status: done
           title: Webhooks de pagamento com autenticação, idempotência e baixa transacional
         - complexity: G
           deps:
@@ -102,14 +102,14 @@ phases:
             - TASK-012
           id: TASK-013
           persona: backend
-          status: pending
+          status: done
           title: Retenção de eventos, refresh tokens e fila no email/retry
         - complexity: M
           deps:
             - TASK-005
           id: TASK-014
           persona: backend
-          status: pending
+          status: done
           title: 'Cobranças: respostas 422/502, mensagens amigáveis e exclusão em transação'
         - complexity: G
           deps:
@@ -122,7 +122,7 @@ phases:
           deps: []
           id: TASK-016
           persona: frontend
-          status: pending
+          status: done
           title: Tela Defina sua nova senha da área do cliente
     - name: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
       status: pending
@@ -271,5 +271,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 19:48:30"
+updated_at: "2026-11-03 20:34:41"
 ---

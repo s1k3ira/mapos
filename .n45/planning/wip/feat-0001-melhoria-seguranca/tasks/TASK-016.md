@@ -3,52 +3,54 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 18:51:53"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTelaTemTituloFraseEAvisoNaSuperficieDeEntrada tests/Unit/DefinirSenhaViewTest.php
       text: A tela renderiza o título 'Defina sua nova senha', a frase de apoio e o aviso warning com role status, na superfície de entrada escura
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFormularioPostaParaDefinirSenhaComCsrf tests/Unit/DefinirSenhaViewTest.php
       text: O formulário faz POST para mine/definirSenha com novalidate, formulario/padrao e o campo CSRF
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCamposDeSenhaVoltamLimposComAutocomplete tests/Unit/DefinirSenhaViewTest.php
       text: Os três campos são password, sem value, com autocomplete current-password / new-password / new-password e senha_atual com autofocus
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testNovaSenhaTemAjudaLigadaPorAriaDescribedby tests/Unit/DefinirSenhaViewTest.php
       text: A nova senha tem a ajuda 'Mínimo de 8 caracteres.' ligada por aria-describedby="campo-senha-ajuda"
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testErroDaSenhaAtualMarcaOCampo tests/Unit/DefinirSenhaViewTest.php
       text: Erro da senha atual marca aria-invalid e aria-describedby="campo-senha_atual-erro" com o texto do servidor
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testErroGeralViraAlertDanger tests/Unit/DefinirSenhaViewTest.php
       text: _geral aparece num alert danger com role alert; sem _geral não há role alert na página
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMostrarSenhaTemRotuloAcessivelNaoVisivel tests/Unit/DefinirSenhaViewTest.php
       text: Os botões de mostrar senha têm data-mostrar-senha, aria-controls, aria-pressed=false e rótulo 'Mostrar senha' só acessível (sr-only)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testBotaoDeLogoutEFormularioPost tests/Unit/DefinirSenhaViewTest.php
       text: Sair é um formulário POST para mine/sair com o campo CSRF, sem link GET
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEscapaErrosESemScriptInline tests/Unit/DefinirSenhaViewTest.php
       text: Textos de erro saem escapados e não há script inline
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDefinirSenhaLigaAjudaEErroPorAriaDescribedby tests/Unit/AcessibilidadeTest.php
       text: AcessibilidadeTest cobre aria-describedby="campo-senha-ajuda campo-senha-erro" da tela definir_senha
-    - done: false
+    - done: true
       test: grep -q 'max-w-md' application/views/conecte/definir_senha.php && grep -q 'superficie-entrada' application/views/conecte/definir_senha.php
       text: A view usa o card estreito centralizado da superfície de entrada (max-w-md) e não ocupa o viewport inteiro
-    - done: false
+    - done: true
       test: '! grep -nE ''font-family|style=|#[0-9a-fA-F]{3,6}\b'' application/views/conecte/definir_senha.php'
       text: 'A view usa só componentes e classes de token: nenhuma família tipográfica, style inline ou cor fixa'
-    - done: false
+    - done: true
       test: '! grep -nE ''href=[^>]*mine/s[a]ir'' application/views/conecte/definir_senha.php'
       text: Nenhum link GET para mine/sair na view
-    - done: false
+    - done: true
       test: php scripts/check-escape.php && php scripts/check-inline-script.php
       text: Guards de escape e de script inline passam sem subir baseline
-    - done: false
+    - done: true
       test: npm run build && git diff --quiet -- assets/dist
       text: CSS compilado em dia com a view nova
 deps: []
+diff_base: cd93b696e101d83ec6a668280a154530531a4868
+diff_tip: ce93744eb280e3c6cda3cbded5aa422f2a3642a3
 files:
     - application/views/conecte/definir_senha.php
     - tests/Unit/DefinirSenhaViewTest.php
@@ -57,18 +59,27 @@ files:
 id: TASK-016
 linter: php scripts/check-escape.php && php scripts/check-inline-script.php
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome TASK-016 (frontend)
+
+    View entregue: `application/views/conecte/definir_senha.php` (superfície de entrada, fora da moldura `conecte/template`).
+
+    - Renderizar com `$this->load->view('conecte/definir_senha', ['erros' => array<string,string>])`; `$erros` ausente = `[]`. Chaves: `senha_atual`, `senha`, `senha_confirmacao`, `_geral` (alert danger, role alert).
+    - Form principal: `POST mine/definirSenha` (`novalidate`, `data-module="formulario/padrao"`) com CSRF + `senha_atual`, `senha` (minlength 8, maxlength 72), `senha_confirmacao`. Senhas sempre sem `value`.
+    - Aviso warning com `role="status"` fixo no topo.
+    - "Sair": formulário separado `POST mine/sair` com CSRF (sem link GET); o módulo `layout/sair` ainda não existe.
+    - Testes: `tests/Unit/DefinirSenhaViewTest.php` e `AcessibilidadeTest::testDefinirSenhaLigaAjudaEErroPorAriaDescribedby`. `assets/dist/app.css` já em dia (build sem diff).
 persona: frontend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/DefinirSenhaViewTest.php tests/Unit/AcessibilidadeTest.php
 title: Tela Defina sua nova senha da área do cliente
-updated_at: "2026-11-03 18:51:53"
+updated_at: "2026-11-03 20:34:10"
 ---
 ## Contexto
 
