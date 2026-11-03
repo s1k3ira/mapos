@@ -4,9 +4,10 @@ created_at: "2026-11-03 15:50:28"
 id: feat-0001-melhoria-seguranca
 n45_version: 1.1.0
 phases:
-    - name: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
+    - completed_at: "2026-11-03 18:21:48"
+      name: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
       started_at: "2026-11-03 16:28:49"
-      status: in-progress
+      status: done
       tasks:
         - complexity: P
           deps: []
@@ -269,5 +270,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 18:04:42"
+updated_at: "2026-11-03 18:21:48"
 ---
