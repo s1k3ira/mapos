@@ -2,7 +2,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . '/libraries/REST_Controller.php';
+require_once APPPATH . 'libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class UsuariosController extends REST_Controller
 {
@@ -372,11 +372,12 @@ class UsuariosController extends REST_Controller
         $refreshToken = (string) $this->post('refresh_token', true);
 
         $this->load->library('Refresh_token');
+        $this->load->helper('api');
         $girado = $this->refresh_token->girar($refreshToken, $this->input->ip_address(), $this->input->user_agent());
 
         $usuario = $girado['ok'] ? $this->usuarios_model->getById($girado['usuario_id']) : null;
-        // Usuário removido, desativado ou com a conta expirada: a sessão acaba aqui.
-        if ($girado['ok'] && (empty($usuario) || (int) $usuario->situacao !== 1 || $this->chk_date($usuario->dataExpiracao))) {
+        // Usuário removido, desativado, com a conta expirada ou de grupo desativado: a sessão acaba aqui.
+        if ($girado['ok'] && ! apiUsuarioPodeUsarApi($usuario, fn (int $grupo): bool => $this->Mapos_model->grupoAtivo($grupo))) {
             $this->refresh_token->revogarDoUsuario((int) $girado['usuario_id']);
             $girado = ['ok' => false];
         }
