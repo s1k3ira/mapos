@@ -55,6 +55,7 @@ $config['payment_gateways'] = [
             'corporation_id' => $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_CREDENTIALS_CORPORATION_ID'] ?? '',
         ],
         'boleto_expiration' => $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_BOLETO_EXPIRATION'] ?? 'P3D',
+        'timeout' => ((int) ($_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT'] ?? 0)) > 0 ? (int) $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT'] : 10,
         'payment_methods' => [
             [
                 'name' => 'Boleto',
