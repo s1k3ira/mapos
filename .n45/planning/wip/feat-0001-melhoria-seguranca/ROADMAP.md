@@ -62,7 +62,8 @@ phases:
           status: done
           title: Tela da senha inicial do cliente exibida uma única vez
     - name: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
-      status: pending
+      started_at: "2026-11-03 18:31:22"
+      status: in-progress
       tasks:
         - complexity: M
           deps:
@@ -270,5 +271,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 18:21:48"
+updated_at: "2026-11-03 18:31:22"
 ---
