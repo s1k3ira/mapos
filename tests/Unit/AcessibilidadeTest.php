@@ -1,5 +1,19 @@
 <?php
 
+if (! function_exists('site_url')) {
+    function site_url($uri = '')
+    {
+        return 'http://mapos.test/index.php/' . ltrim((string) $uri, '/');
+    }
+}
+
+if (! function_exists('base_url')) {
+    function base_url($uri = '')
+    {
+        return 'http://mapos.test/' . ltrim((string) $uri, '/');
+    }
+}
+
 /**
  * Acessibilidade AA (#2853): título por tela, anel de foco com contraste,
  * menos movimento, nome do menu do usuário e topbar sem estourar em 320 px.
@@ -115,5 +129,50 @@ final class AcessibilidadeTest extends MaposTestCase
     public function testListaDaPaletaNaoEParadaExtraDoTab(): void
     {
         $this->assertStringContainsString('id="v5-busca-lista" tabindex="-1"', (string) file_get_contents(APPPATH . 'views/tema/busca.php'));
+    }
+
+    public function testDefinirSenhaLigaAjudaEErroPorAriaDescribedby(): void
+    {
+        $carregador = new class() {
+            public object $security;
+
+            public object $config;
+
+            public function __construct()
+            {
+                $this->config = new class() {
+                    public function item($nome)
+                    {
+                        return ['app_name' => 'Map-OS'][$nome] ?? null;
+                    }
+                };
+                $this->security = new class() {
+                    public function get_csrf_token_name()
+                    {
+                        return 'MAPOS_TOKEN';
+                    }
+
+                    public function get_csrf_hash()
+                    {
+                        return 'hash-csrf';
+                    }
+                };
+            }
+
+            public function renderizar(array $variaveis): string
+            {
+                return (function () use ($variaveis) {
+                    extract($variaveis);
+                    ob_start();
+                    include APPPATH . 'views/conecte/definir_senha.php';
+
+                    return (string) ob_get_clean();
+                })();
+            }
+        };
+
+        $html = $carregador->renderizar(['erros' => ['senha' => 'A nova senha precisa de pelo menos 8 caracteres.']]);
+
+        $this->assertStringContainsString('aria-describedby="campo-senha-ajuda campo-senha-erro"', $html);
     }
 }
