@@ -25,14 +25,14 @@ phases:
             - TASK-001
           id: TASK-003
           persona: backend
-          status: pending
+          status: done
           title: 'Base da API: 500 em JSON, 401 x 403, grupo ativo, paginação e limite por IP'
         - complexity: G
           deps:
             - TASK-001
           id: TASK-004
           persona: backend
-          status: pending
+          status: done
           title: 'Mercado Pago: exceções tipadas, log, timeout e descrição da cobrança'
         - complexity: G
           deps:
@@ -46,7 +46,7 @@ phases:
             - TASK-001
           id: TASK-006
           persona: backend
-          status: pending
+          status: done
           title: Proteção de pastas sem @, save_queries e seed só em development
         - complexity: M
           deps: []
@@ -269,5 +269,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 17:17:55"
+updated_at: "2026-11-03 17:40:55"
 ---

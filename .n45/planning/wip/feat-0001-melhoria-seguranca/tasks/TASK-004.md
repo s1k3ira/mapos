@@ -3,50 +3,52 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 15:58:10"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRecusaComConteudoArrayViraMensagemStringSemTypeError tests/Unit/GatewayMercadoPagoTest.php
       text: MPApiException 400 com conteúdo array na criação de boleto vira GatewayRecusouException com mensagem string em pt-BR (sem TypeError e sem o texto do provedor)
-    - done: false
+    - done: true
       test: '! grep -nE ''new \\Exception\(\$e->getApiResponse\(\)'' application/libraries/Gateways/MercadoPago.php'
       text: Nenhum catch do Mercado Pago lança Exception com o conteúdo cru da API
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Indisponivel tests/Unit/GatewayMercadoPagoTest.php
       text: MPApiException 5xx/429/401 e MPException viram GatewayIndisponivelException com a mensagem genérica; 404 vira GatewayRecusouException('Cobrança não encontrada no Mercado Pago.')
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Log tests/Unit/GatewayMercadoPagoTest.php
       text: Toda falha gera uma linha 'gateway op=<op> gateway=MercadoPago cobranca=<id> http=<cod> duracao_ms=' sem CPF, e-mail, token nem corpo do provedor
-    - done: false
+    - done: true
       test: grep -qE 'class GatewayRecusouException extends \\RuntimeException' application/libraries/Gateways/Exceptions/GatewayRecusouException.php && grep -qE 'class GatewayIndisponivelException extends \\RuntimeException' application/libraries/Gateways/Exceptions/GatewayIndisponivelException.php
       text: As duas exceções estendem RuntimeException no namespace Libraries\Gateways\Exceptions
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Descricao tests/Unit/GatewayMercadoPagoTest.php
       text: 'dadosDoBoleto() descreve venda como ''Venda #31'' e OS como ''OS #12'''
-    - done: false
+    - done: true
       test: '! grep -nE ''PaymentGateway::PAYMENT_TYPE_OS \?'' application/libraries/Gateways/MercadoPago.php'
       text: A descrição não testa mais a constante PAYMENT_TYPE_OS sozinha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter NotificationUrl tests/Unit/GatewayMercadoPagoTest.php
       text: Sem MP_WEBHOOK_SECRET a cobrança é montada sem notification_url; com o segredo, notification_url = site_url('webhooks/mercadopago')
-    - done: false
+    - done: true
       test: '! grep -nE ''seusite\.com\.br|mapos\.com\.br'' application/libraries/Gateways/MercadoPago.php'
       text: Nenhum domínio fixo de terceiro permanece no Mercado Pago
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter TimeoutDoConfig tests/Unit/GatewayMercadoPagoTest.php
       text: payment_gateways.php expõe timeout no MercadoPago lido de PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT com padrão 10 para ausente, vazio, 0 ou não numérico
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter TimeoutDoCliente tests/Unit/GatewayMercadoPagoTest.php
       text: O cliente HTTP do SDK fica configurado com o timeout de conexão e de resposta informado (25 s lido de volta do cliente)
-    - done: false
+    - done: true
       test: grep -qx 'PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT=10' application/.env.example && grep -qx 'MP_WEBHOOK_SECRET=' application/.env.example
       text: .env.example lista PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT=10 e MP_WEBHOOK_SECRET vazio
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/CobrancaValorTest.php
       text: O teste de cobrança existente continua passando com os métodos novos não abstratos na base
-    - done: false
+    - done: true
       test: grep -cE 'assertSame\(.O (Mercado Pago|provedor|pagamento)' tests/Unit/GatewayMercadoPagoTest.php | grep -qvx 0
       text: 'Os testes não validam só o tipo da exceção: conferem a mensagem exata'
 deps:
     - TASK-001
+diff_base: 68c726edffdfc39f2a7bc26c1b0f251d8cfd62b7
+diff_tip: c8b5f7e074735ec930a43a1110200d7ecb60b9e9
 files:
     - application/libraries/Gateways/Exceptions/GatewayRecusouException.php
     - application/libraries/Gateways/Exceptions/GatewayIndisponivelException.php
@@ -58,18 +60,29 @@ files:
 id: TASK-004
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome TASK-004 (backend)
+
+    **Exceções** (namespace `Libraries\Gateways\Exceptions`, ambas estendem `\RuntimeException`):
+    - `GatewayRecusouException(string $mensagem, ?\Throwable $anterior = null)` — recusa do provedor; mensagem sempre texto nosso em pt-BR, seguro para exibir.
+    - `GatewayIndisponivelException(string $mensagem = self::MENSAGEM, ?\Throwable $anterior = null)` — falha técnica (timeout, rede, 5xx/429/401/403); `MENSAGEM` = "O provedor de pagamento não respondeu. Tente novamente em instantes."
+
+    **`Libraries\Gateways\BasePaymentGateway`** (métodos `protected`, não abstratos, reutilizáveis por Asaas/Efí): `chamarGateway(string $operacao, $idCobranca, callable $chamada)`, `registrarFalha(...)` (log `error`: `gateway op= gateway= cobranca= http= duracao_ms= erro=`, sem PII/corpo), ganchos `traduzirFalha()`, `codigoHttp()`, `nomeDoGateway()`, e `urlDeNotificacao(string $variavelDoSegredo, string $rota): ?string` (null sem segredo).
+
+    **`MercadoPago`**: todas as chamadas ao `PaymentClient` (ops `criar_boleto`, `cancelar`, `atualizar`, `confirmar`) passam por `chamarGateway`. `MPApiException` 400–499 exceto 401/403/429 vira Recusou (404 = "Cobrança não encontrada no Mercado Pago."); demais viram Indisponivel. `dadosDoBoleto()` descreve "Venda #id"/"OS #id" e só inclui `notification_url = site_url('webhooks/mercadopago')` com `MP_WEBHOOK_SECRET` preenchido. Validações locais seguem como `\Exception`.
+
+    **Config**: `payment_gateways.php` → `['MercadoPago']['timeout']` (env `PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT`, padrão 10 para ausente/vazio/0/não numérico); `MercadoPagoHttpClient` (novo arquivo) aplica conexão e resposta no cliente do SDK via `configurarTimeout()`. `.env.example` lista `PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT=10` e `MP_WEBHOOK_SECRET=`.
 persona: backend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
+    green: true
     red: false
-    refactor: false
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/GatewayMercadoPagoTest.php tests/Unit/CobrancaValorTest.php
 title: 'Mercado Pago: exceções tipadas, log, timeout e descrição da cobrança'
-updated_at: "2026-11-03 15:58:10"
+updated_at: "2026-11-03 17:40:46"
 ---
 ## Contexto
 

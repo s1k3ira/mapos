@@ -3,59 +3,61 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 15:56:51"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExcecaoNaoTratadaViraErroInternoEmJsonComLinhaNoLog tests/Unit/ApiBaseTest.php
       text: Método da API que lança TypeError responde 500 {status:false, message:'Erro interno'} sem arquivo/linha no corpo e grava log 'api excecao classe=TypeError'
-    - done: false
+    - done: true
       test: grep -nE 'catch \(\\Throwable' application/libraries/REST_Controller.php && ! grep -n 'show_exception' application/libraries/REST_Controller.php
       text: REST_Controller captura Throwable e não chama mais show_exception
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter ExigirPermissao tests/Unit/ApiBaseTest.php
       text: exigirPermissao() responde 403 com a mensagem informada quando checkPermission nega, e não responde quando permite
-    - done: false
+    - done: true
       test: '! grep -n ''HTTP_UNAUTHORIZED'' application/controllers/api/v1/ApiController.php'
       text: ApiController não responde mais 401 para falta de permissão
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter LoggedUser tests/Unit/ApiBaseTest.php
       text: logged_user() responde 401 para token ausente, inválido, de cliente, usuário desativado, conta expirada e grupo desativado
-    - done: false
+    - done: true
       test: sed -n '/public function logged_user/,/^    }/p' application/libraries/REST_Controller.php | grep -c 'HTTP_FORBIDDEN' | grep -qx 0
       text: logged_user() não responde mais 403
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter PodeUsarApi tests/Unit/ApiBaseTest.php
       text: apiUsuarioPodeUsarApi devolve false para grupo desativado e true para usuário ativo, sem expiração e grupo ativo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Refresh tests/Unit/ApiBaseTest.php
       text: POST /api/v1/refresh de usuário com grupo desativado responde 401 e revoga os refresh tokens do usuário
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Paginacao tests/Unit/ApiBaseTest.php
       text: 'apiPaginacao: perPage 1000000 vira 100, page=2&perPage=10 dá offset 20, padrão 20/0, perPage abc/0/-5 e page -1/1.5 dão erro por campo'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter PaginacaoDaApi tests/Unit/ApiBaseTest.php
       text: paginacaoDaApi() responde 422 com erros.perPage para perPage não inteiro
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Data tests/Unit/ApiBaseTest.php
       text: apiDataValida recusa 31/02/2026 e 2026-01-01 no formato d/m/Y e aceita 15/03/2026 devolvendo 2026-03-15; apiJanelaValida recusa 400 dias e fim antes do início
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Calendario tests/Unit/ApiBaseTest.php
       text: GET /api/v1/calendario devolve result.events com os eventos montados (sem allOs) e responde 422 para start inválido e janela acima de 366 dias
-    - done: false
+    - done: true
       test: '! grep -nE "''allOs''" application/controllers/api/v1/ApiController.php'
       text: calendario_get não devolve mais a lista crua de OS
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/LimiteRequisicoesTest.php
       text: 'Limite_requisicoes: duas chamadas liberam, a terceira no mesmo minuto devolve os segundos até a próxima janela (60 em t=120, 55 em t=125); escopos diferentes não somam; limite 0 e tabela ausente devolvem 0'
-    - done: false
-      test: grep -nE "hash_hmac\('sha256', \$escopo \. '\|' \. \$ip" application/libraries/Limite_requisicoes.php
+    - done: true
+      test: grep -nF "hash_hmac('sha256', \$escopo . '|' . \$ip" application/libraries/Limite_requisicoes.php
       text: A chave do contador combina escopo e IP num HMAC (IP nunca em claro)
-    - done: false
+    - done: true
       test: grep -nE "segundosParaLiberar\('api'" application/libraries/REST_Controller.php
       text: REST_Controller usa Limite_requisicoes no limite da API
-    - done: false
+    - done: true
       test: '! grep -nE ''assertIsArray|assertIsInt|assertNotNull\(\$resposta'' tests/Unit/ApiBaseTest.php tests/Unit/LimiteRequisicoesTest.php'
       text: Os testes da task não usam asserção só de tipo para valores calculáveis
 deps:
     - TASK-001
+diff_base: c8b5f7e074735ec930a43a1110200d7ecb60b9e9
+diff_tip: 097272eb6c9b7dfd57c57d279ae4a6648d411038
 files:
     - application/libraries/REST_Controller.php
     - application/libraries/Limite_requisicoes.php
@@ -67,18 +69,32 @@ files:
 id: TASK-003
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Contrato entregue (Backend)
+
+    `REST_Controller` (application/libraries/REST_Controller.php):
+    - `protected exigirPermissao(string $permissao, string $mensagem): void` — 403 `{status:false,message:$mensagem}` quando `checkPermission` nega.
+    - `protected paginacaoDaApi(): array` — `[int $limite, int $offset]`; inválido responde 422 `{status:false,message:'Parâmetros de paginação inválidos.',erros}`.
+    - `public logged_user()` — 401 `{status:false,message}` em qualquer falha (sem header: `Faça login para acessar a API.`; demais: `Faça o login novamente!`), inclusive conta expirada e grupo desativado; nunca 403.
+    - `protected executarMetodo()` — qualquer `\Throwable` vira 500 `{status:false,message:'Erro interno'}`; log `error` `api excecao classe=... mensagem=... local=... rota=...`.
+    - `limiteDeRequisicoes()` usa `Limite_requisicoes` (escopo `api`), 429 + `Retry-After`.
+
+    `api_helper.php`: `apiUsuarioPodeUsarApi(?object, callable): bool`; `apiPaginacao($perPage,$page)` -> `['ok'=>true,'limite','offset']` | `['ok'=>false,'erros']` (teto 100, padrão 20/0); `apiDataValida(?string,string): ?string` (Y-m-d ou null); `apiJanelaValida(string,string,int=366): bool`.
+
+    `Limite_requisicoes::segundosParaLiberar(string $escopo, string $ip, int $limitePorMinuto): int` — 0 = liberado; HMAC(escopo|ip); tabela `api_rate_limit`; sem tabela ou limite 0 = 0.
+
+    Endpoints: `GET /api/v1/calendario` — 422 `Datas inválidas.` com `erros.start`/`erros.end`; 200 `result={start,end,events}` (sem `allOs`); 403 sem `vOs`. `GET /api/v1/audit` — paginação via `paginacaoDaApi()`, 403 sem `cAuditoria`. `POST /api/v1/refresh` — 401 e revoga refresh do usuário se grupo desativado.
 persona: backend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
     green: false
     red: false
     refactor: false
 tests: application/vendor/bin/phpunit tests/Unit/ApiBaseTest.php tests/Unit/LimiteRequisicoesTest.php
 title: 'Base da API: 500 em JSON, 401 x 403, grupo ativo, paginação e limite por IP'
-updated_at: "2026-11-03 15:56:51"
+updated_at: "2026-11-03 17:41:29"
 ---
 ## Contexto
 

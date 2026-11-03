@@ -3,41 +3,43 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 16:00:04"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Htaccess tests/Unit/HardeningArmazenamentoTest.php
       text: armazenamentoPasta() grava o .htaccess da raiz com <IfModule mod_authz_core.c> e Require all denied, regrava o antigo sem mod_authz_core e não toca no que já contém mod_authz_core
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter PastaPublica tests/Unit/HardeningArmazenamentoTest.php
       text: armazenamentoProtegerPastaPublica() grava (ou regrava o antigo) com Require all denied em mod_authz_core e o fallback Order/Deny
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter SemEscrita tests/Unit/HardeningArmazenamentoTest.php
       text: 'Raiz sem permissão de escrita: armazenamentoPasta() devolve null, nenhum aviso PHP escapa e há linha de erro ''armazenamento falha operacao=mkdir'' no log'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter IndexHtml tests/Unit/HardeningArmazenamentoTest.php
       text: Falha ao gravar index.html em protegerDiretorioUpload() gera linha de erro com operacao=gravar
-    - done: false
+    - done: true
       test: '! grep -nE ''@(file_put_contents|mkdir|unlink|chmod)'' application/helpers/armazenamento_helper.php application/helpers/general_helper.php'
       text: Nenhum @ silencia mkdir, file_put_contents, unlink ou chmod nos dois helpers
-    - done: false
+    - done: true
       test: grep -nE 'restore_error_handler' application/helpers/armazenamento_helper.php application/helpers/general_helper.php | wc -l | grep -qvx 0
       text: O helper que captura o aviso restaura o error handler no finally
-    - done: false
+    - done: true
       test: grep -nF "'save_queries' => ENVIRONMENT !== 'production'" application/config/database.php
       text: save_queries desligado em produção
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Seed tests/Unit/HardeningArmazenamentoTest.php
       text: Seed Usuarios com ambiente production ou testing não insere admin@admin.com e imprime o motivo; com development insere
-    - done: false
+    - done: true
       test: grep -nE "development" application/database/seeds/Usuarios.php
       text: O seed decide pelo ambiente antes do insert
-    - done: false
+    - done: true
       test: grep -cE 'assertStringContainsString\(.(Require all denied|mod_authz_core)' tests/Unit/HardeningArmazenamentoTest.php | grep -qvx 0
       text: Os testes de arquivo assertam o conteúdo gravado, não só a existência do arquivo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ArmazenamentoTest.php
       text: Testes existentes de armazenamento continuam passando
 deps:
     - TASK-001
+diff_base: 097272eb6c9b7dfd57c57d279ae4a6648d411038
+diff_tip: c4c75dcb49b29f4ed35beb706347a0096c6ca96c
 files:
     - application/helpers/armazenamento_helper.php
     - application/helpers/general_helper.php
@@ -47,18 +49,26 @@ files:
 id: TASK-006
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    Símbolos reutilizáveis em `application/helpers/armazenamento_helper.php`:
+    - `armazenamentoSemAviso(callable): array{0: mixed, 1: ?string}` — executa a operação capturando o E_WARNING/E_NOTICE (restaura o error handler no `finally`).
+    - `armazenamentoRegistrarFalha(string $operacao, string $caminho, ?string $aviso): void` — `log_message('error', 'armazenamento falha operacao=<mkdir|gravar|apagar> caminho=... motivo=...')`.
+    - `armazenamentoApagar(string $caminho): void` — unlink com log `apagar` na falha.
+    - `armazenamentoGravarProtecao(string $arquivo, string $conteudo): void` — grava/regrava o `.htaccess` quando ausente ou sem `mod_authz_core` (constante `ARMAZENAMENTO_MARCA_AUTHZ`).
+    - `armazenamentoPasta()` devolve `null` e loga `operacao=mkdir` se a pasta não puder ser criada; `.htaccess` (raiz e pasta pública) agora com `Require all denied` (mod_authz_core) + fallback `Order/Deny`.
+    - `protegerDiretorioUpload()` (general_helper) loga `operacao=gravar` se o `index.html` falhar.
+    Config/seed: `database.php` `save_queries = ENVIRONMENT !== 'production'`; `Usuarios::executar(string $ambiente): bool` só insere em `development` (outros: imprime aviso e devolve `false`); `run()` delega a ele.
 persona: backend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/HardeningArmazenamentoTest.php tests/Unit/ArmazenamentoTest.php
 title: Proteção de pastas sem @, save_queries e seed só em development
-updated_at: "2026-11-03 16:00:04"
+updated_at: "2026-11-03 17:42:00"
 ---
 ## Contexto
 
