@@ -27,14 +27,15 @@ class Email extends CI_Controller
             show_404();
         }
 
-        $this->sair($this->executarCiclo('retry', $this->email));
+        $this->load->library('Retencao');
+        $this->sair($this->executarCiclo('retry', $this->email, $this->retencao));
     }
 
     /**
      * Roda um ciclo da fila e devolve o código de saída do cron: 0 em sucesso
      * ou lock ocupado, 1 em falha técnica.
      */
-    protected function executarCiclo(string $ciclo, object $fila): int
+    protected function executarCiclo(string $ciclo, object $fila, ?object $retencao = null): int
     {
         log_message('info', "email_fila ciclo={$ciclo} inicio");
 
@@ -55,6 +56,11 @@ class Email extends CI_Controller
 
             $resultado = $fila->reabrirFila();
             log_message('info', sprintf('email_fila ciclo=retry reabertos=%d definitivos=%d', $resultado['reabertos'], $resultado['definitivos']));
+
+            if ($retencao !== null) {
+                $apagados = $retencao->limpar();
+                log_message('info', sprintf('retencao webhook_eventos=%d api_refresh_tokens=%d email_queue=%d', $apagados['webhook_eventos'], $apagados['api_refresh_tokens'], $apagados['email_queue']));
+            }
 
             return 0;
         } catch (\Throwable $e) {
