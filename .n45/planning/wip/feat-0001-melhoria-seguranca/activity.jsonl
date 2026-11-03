@@ -8,3 +8,5 @@
 {"ts":"2026-11-03 15:26:17","event":"return","feature":"feat-0001-melhoria-seguranca","agent":"data-architect","mode":"Spec","attempt":1,"status":"ok","summary":"Status: ok"}
 {"ts":"2026-11-03 15:27:13","event":"spawn","feature":"feat-0001-melhoria-seguranca","agent":"architect-create-spec-feat","mode":"Spec","attempt":1,"capacity":"maximum"}
 {"ts":"2026-11-03 15:39:29","event":"return","feature":"feat-0001-melhoria-seguranca","agent":"architect-create-spec-feat","mode":"Spec","attempt":1,"status":"ok","summary":"Status: ok"}
+{"ts":"2026-11-03 15:42:14","event":"spawn","feature":"feat-0001-melhoria-seguranca","agent":"architect-create-roadmap","mode":"fanout","attempt":1,"capacity":"maximum"}
+{"ts":"2026-11-03 16:02:42","event":"return","feature":"feat-0001-melhoria-seguranca","agent":"architect-create-roadmap","mode":"fanout","attempt":1,"status":"ok","summary":"Status: ok"}

@@ -2,10 +2,10 @@
 created_at: "2026-11-03 15:39:19"
 id: feat-0001-melhoria-seguranca
 n45_version: 1.1.0
-status: proposed
+status: accepted
 title: Melhoria de segurança e tratamento de erros
 type: feat
-updated_at: "2026-11-03 15:39:19"
+updated_at: "2026-11-03 16:03:06"
 ---
 ## 1. Visão Geral
 
