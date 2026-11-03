@@ -39,7 +39,7 @@ phases:
             - TASK-004
           id: TASK-005
           persona: backend
-          status: pending
+          status: done
           title: 'Asaas e Efí: exceções tipadas, log, timeout e notification_url'
         - complexity: M
           deps:
@@ -269,5 +269,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 17:40:55"
+updated_at: "2026-11-03 18:04:42"
 ---

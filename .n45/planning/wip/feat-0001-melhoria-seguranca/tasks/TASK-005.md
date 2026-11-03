@@ -3,44 +3,46 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 15:59:11"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRecusaDoAsaasNaoRepassaOTextoDoProvedor tests/Unit/GatewayAsaasEfiTest.php
       text: Asaas com errors na criação do boleto lança GatewayRecusouException com a mensagem nossa e não repassa a descrição do provedor nem na mensagem nem no log
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter AsaasIndisponivel tests/Unit/GatewayAsaasEfiTest.php
       text: Asaas com retorno falso ou exceção do SDK lança GatewayIndisponivelException e loga 'gateway op=<op> gateway=Asaas cobranca=<id>'
-    - done: false
+    - done: true
       test: '! grep -nE ''\$error->description'' application/libraries/Gateways/Asaas.php'
       text: O Asaas não monta mais mensagem de erro com a descrição do provedor
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Efi tests/Unit/GatewayAsaasEfiTest.php
       text: Efí com EfiException 400 lança GatewayRecusouException; 401/403/429/5xx e code != 200 lançam GatewayIndisponivelException; log traz http=<código>
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter NotificationUrl tests/Unit/GatewayAsaasEfiTest.php
       text: Com EFI_WEBHOOK_SECRET a notification_url do boleto e do link é site_url('webhooks/efi/<segredo>'); sem ele o corpo vai sem metadata
-    - done: false
+    - done: true
       test: '! grep -nE ''mapos\.com\.br|seusite\.com\.br'' application/libraries/Gateways/GerencianetSdk.php application/libraries/Gateways/Asaas.php'
       text: Nenhum domínio fixo de terceiro permanece nos gateways Asaas e Efí
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter TimeoutDoConfig tests/Unit/GatewayAsaasEfiTest.php
       text: 'payment_gateways.php: Efí com timeout padrão 10 e Asaas com timeout lido de PAYMENT_GATEWAYS_ASAAS_TIMEOUT (padrão 10 para ausente, vazio, 0 ou não numérico)'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter TimeoutDoCliente tests/Unit/GatewayAsaasEfiTest.php
       text: O cliente HTTP usado pelo SDK do Asaas fica configurado com o timeout informado (20 s lido de volta)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Descricao tests/Unit/GatewayAsaasEfiTest.php
       text: 'Descrição da cobrança é ''OS #<id>'' para OS e ''Venda #<id>'' para venda no Asaas e na Efí'
-    - done: false
+    - done: true
       test: grep -qx 'PAYMENT_GATEWAYS_EFI_TIMEOUT=10' application/.env.example && grep -qx 'PAYMENT_GATEWAYS_ASAAS_TIMEOUT=10' application/.env.example && grep -qx 'EFI_WEBHOOK_SECRET=' application/.env.example
       text: .env.example tem PAYMENT_GATEWAYS_EFI_TIMEOUT=10, PAYMENT_GATEWAYS_ASAAS_TIMEOUT=10 e EFI_WEBHOOK_SECRET vazio
-    - done: false
+    - done: true
       test: '! grep -nE ''log_message\([^)]*EFI_WEBHOOK_SECRET'' application/libraries/Gateways/GerencianetSdk.php'
       text: O segredo do webhook da Efí não é logado
-    - done: false
+    - done: true
       test: grep -cE 'assertSame\(.(O Asaas|A Efí|O provedor)' tests/Unit/GatewayAsaasEfiTest.php | grep -qvx 0
       text: Os testes conferem a mensagem exata das exceções, não só o tipo
 deps:
     - TASK-004
+diff_base: dd38a059a549ef17a77c9cf6935b7574c39379d8
+diff_tip: e1d39ab88038b8b128c502ff34dd9cdaa6f8f9d0
 files:
     - application/libraries/Gateways/Asaas.php
     - application/libraries/Gateways/GerencianetSdk.php
@@ -50,18 +52,29 @@ files:
 id: TASK-005
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome
+
+    - Asaas e Efí passam todas as chamadas ao SDK por `chamarGateway()` (ops: `criar_boleto`, `criar_link`, `criar_cliente`, `cancelar`, `atualizar`, `confirmar`).
+    - Recusa do provedor: `GatewayRecusouException` com mensagem pt-BR nossa (Asaas: `errors` na resposta; Efí: `EfiException` 400-499 exceto 401/403/429). Texto do provedor nunca vai para mensagem nem log.
+    - Falha técnica (retorno falso, exceção do SDK, 401/403/429/5xx, `code != 200`): `GatewayIndisponivelException` (`MENSAGEM`). Log da Efí traz `http=<código>`.
+    - Validações locais seguem como `\Exception`.
+    - Efí: `notification_url` = `site_url('webhooks/efi/<EFI_WEBHOOK_SECRET>')` via `urlDeNotificacao()`; sem segredo o corpo vai sem `metadata`. Segredo não é logado.
+    - Timeout: `payment_gateways.php` Efí padrão 10 (`PAYMENT_GATEWAYS_EFI_TIMEOUT`), Asaas `timeout` (`PAYMENT_GATEWAYS_ASAAS_TIMEOUT`, padrão 10 para ausente/vazio/0/não numérico). Novo `Libraries\Gateways\AsaasConexao` (estende `CodePhix\Asaas\Connection`, aplica CURLOPT_CONNECTTIMEOUT/TIMEOUT), injetado por `Asaas::configurarTimeout()`.
+    - `.env.example`: `PAYMENT_GATEWAYS_EFI_TIMEOUT=10`, `PAYMENT_GATEWAYS_ASAAS_TIMEOUT=10`, `EFI_WEBHOOK_SECRET=`.
+    - Descrição da cobrança: `OS #<id>` / `Venda #<id>` nos dois gateways.
+    - Pendência para tasks seguintes: rota `webhooks/efi/<segredo>` ainda precisa existir/validar o segredo.
 persona: backend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/GatewayAsaasEfiTest.php
 title: 'Asaas e Efí: exceções tipadas, log, timeout e notification_url'
-updated_at: "2026-11-03 15:59:11"
+updated_at: "2026-11-03 18:04:55"
 ---
 ## Contexto
 
