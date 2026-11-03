@@ -17,6 +17,96 @@ abstract class MaposTestCase extends PHPUnitTestCase
     protected function setUp(): void
     {
         $this->db = maposTestDatabase();
+        // Depois de abrir o banco: o driver do CI loga a própria inicialização,
+        // e o teste deve começar com o log vazio.
+        $GLOBALS['__mapos_logs'] = [];
+    }
+
+    /**
+     * Mensagens registradas por log_message() neste teste, filtradas pelo nível
+     * (sem diferenciar maiúsculas) quando informado.
+     *
+     * @return list<string>
+     */
+    protected function logs(?string $nivel = null): array
+    {
+        $nivel = $nivel === null ? null : strtolower($nivel);
+        $mensagens = [];
+
+        foreach ($GLOBALS['__mapos_logs'] ?? [] as $registro) {
+            if ($nivel === null || $registro['nivel'] === $nivel) {
+                $mensagens[] = $registro['mensagem'];
+            }
+        }
+
+        return $mensagens;
+    }
+
+    protected function assertLogContem(string $nivel, string $trecho): void
+    {
+        foreach ($this->logs($nivel) as $mensagem) {
+            if (str_contains($mensagem, $trecho)) {
+                $this->addToAssertionCount(1);
+
+                return;
+            }
+        }
+
+        $this->fail($this->falhaDeLog("Nenhum log '{$nivel}' contém '{$trecho}'."));
+    }
+
+    protected function assertLogNaoContem(string $trecho): void
+    {
+        foreach ($GLOBALS['__mapos_logs'] ?? [] as $registro) {
+            if (str_contains($registro['mensagem'], $trecho)) {
+                $this->fail($this->falhaDeLog("O log '{$registro['nivel']}' contém '{$trecho}'."));
+            }
+        }
+
+        $this->addToAssertionCount(1);
+    }
+
+    private function falhaDeLog(string $mensagem): string
+    {
+        return $mensagem . ' Logs capturados: ' . json_encode($GLOBALS['__mapos_logs'] ?? [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Executa a ação e reprova o teste se ela disparar Deprecated vindo de
+     * arquivo sob $raiz (padrão: APPPATH), ignorando application/vendor/.
+     *
+     * @return mixed O retorno da ação
+     */
+    protected function semDeprecated(callable $acao, ?string $raiz = null): mixed
+    {
+        $raiz ??= APPPATH;
+        $vendor = APPPATH . 'vendor' . DIRECTORY_SEPARATOR;
+        $ocorrencia = null;
+
+        set_error_handler(
+            static function (int $errno, string $errstr, string $errfile, int $errline) use ($raiz, $vendor, &$ocorrencia): bool {
+                if (str_starts_with($errfile, $raiz) && ! str_starts_with($errfile, $vendor)) {
+                    $ocorrencia ??= [$errfile, $errline, $errstr];
+
+                    return true;
+                }
+
+                return false;
+            },
+            E_DEPRECATED | E_USER_DEPRECATED
+        );
+
+        try {
+            $retorno = $acao();
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($ocorrencia !== null) {
+            $this->fail("Deprecated em {$ocorrencia[0]}:{$ocorrencia[1]}: {$ocorrencia[2]}");
+        }
+
+        return $retorno;
     }
 
     /**

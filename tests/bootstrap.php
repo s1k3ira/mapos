@@ -17,9 +17,13 @@ require MAPOS_ROOT . DIRECTORY_SEPARATOR . 'application' . DIRECTORY_SEPARATOR .
 
 // O Query Builder chama log_message() e show_error(); sob teste eles não têm
 // para onde escrever, então viram stubs antes de o CI carregá-los.
+// O stub acumula cada chamada para os testes assertarem o que foi logado.
+$GLOBALS['__mapos_logs'] = [];
+
 if (! function_exists('log_message')) {
     function log_message($level, $message, $php_error = false)
     {
+        $GLOBALS['__mapos_logs'][] = ['nivel' => strtolower((string) $level), 'mensagem' => (string) $message];
     }
 }
 
