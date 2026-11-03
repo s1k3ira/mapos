@@ -61,9 +61,10 @@ phases:
           persona: frontend
           status: done
           title: Tela da senha inicial do cliente exibida uma única vez
-    - name: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
+    - completed_at: "2026-11-03 20:38:21"
+      name: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
       started_at: "2026-11-03 18:31:22"
-      status: in-progress
+      status: done
       tasks:
         - complexity: M
           deps:
@@ -271,5 +272,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 20:34:41"
+updated_at: "2026-11-03 20:38:21"
 ---
