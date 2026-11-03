@@ -3,54 +3,56 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 18:41:20"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSenhaAleatoria tests/Unit/SenhaClienteTest.php
       text: clienteSenhaAleatoria() devolve 16 caracteres só do alfabeto sem I, O, l, o, 0 e 1, e tamanho < 12 lança InvalidArgumentException
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDuasSenhasSeguidasSaoDiferentes tests/Unit/SenhaClienteTest.php
       text: Duas chamadas seguidas de clienteSenhaAleatoria() devolvem valores diferentes
-    - done: false
+    - done: true
       test: grep -q 'random_int' application/helpers/clientes_helper.php && ! grep -nE '\b(mt_rand|str_shuffle)\(|[^_]rand\(' application/helpers/clientes_helper.php
       text: clienteSenhaAleatoria usa random_int (CSPRNG), nunca rand, mt_rand ou str_shuffle
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEmitirGravaOTipo tests/Unit/SenhaClienteTest.php
       text: emitir(7, null, null, null, 'cliente') grava tipo = 'cliente'; sem tipo grava 'usuario'; tipo desconhecido lança InvalidArgumentException
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testRefreshDeClienteNaoGiraNaRotaDoOperador|testRefreshDeOperadorNaoGiraComoCliente' tests/Unit/SenhaClienteTest.php
       text: Refresh de cliente em girar() com tipo padrão devolve motivo 'invalido' sem marcar usado_em; refresh de operador com tipo 'cliente' idem
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRefreshDeClienteGiraComTipoCliente tests/Unit/SenhaClienteTest.php
       text: girar() de cliente com tipo 'cliente' devolve ok, usuario_id 7 e o token novo nasce com tipo 'cliente' na mesma familia
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testReusoDoRefreshDoClienteRevogaAFamiliaELoga tests/Unit/SenhaClienteTest.php
       text: Reuso do refresh de cliente após a tolerância revoga a família e loga 'refresh reuso tipo=cliente dono=7'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRevogarDoUsuarioSoRevogaOTipoPedido tests/Unit/SenhaClienteTest.php
       text: revogarDoUsuario(7, 'cliente') revoga só o refresh tipo cliente do id 7 e mantém o do operador 7 com revogado_em NULL (e vice-versa)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSemColunaTipo tests/Unit/SenhaClienteTest.php
       text: Sem a coluna tipo, emitir(..., 'cliente') devolve null e loga a mensagem de migration; o refresh do operador segue funcionando
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaDeSenhaGravaHashIncrementaVersoesERevoga tests/Unit/SenhaClienteTest.php
       text: registrarTrocaDeSenha(5, hash, true) grava o hash, senha_trocar = 1, sessao_versao 2→3, token_versao 4→5 e revoga só o refresh tipo cliente do 5
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaDeSenhaSemExigirZeraSenhaTrocar tests/Unit/SenhaClienteTest.php
       text: registrarTrocaDeSenha(5, hash, false) zera senha_trocar
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaDeSenhaDeClienteInexistenteDevolveFalse tests/Unit/SenhaClienteTest.php
       text: registrarTrocaDeSenha de cliente inexistente devolve false sem revogar refresh
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaDeSenhaFalhaNoMeioDesfazTudo tests/Unit/SenhaClienteTest.php
       text: Falha de banco no meio da troca desfaz senha, versões e senha_trocar e loga 'transacao rollback operacao=troca_senha_cliente id=5'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiAutenticacaoTest.php
       text: A suíte de autenticação do operador continua verde (tabela sem coluna tipo)
-    - done: false
+    - done: true
       test: grep -qE 'assertSame\(.*(sessao_versao|token_versao|\[.antigo., 0, 2, 4\])' tests/Unit/SenhaClienteTest.php
       text: Os testes da troca conferem os valores exatos das versões, não só que mudaram
 deps:
     - TASK-001
     - TASK-002
+diff_base: 9498e35785228750d1bb42d24fdccf1cf221a5fa
+diff_tip: 358934381043c04c103f1b02b0583f2a203110e4
 files:
     - application/helpers/clientes_helper.php
     - application/libraries/Refresh_token.php
@@ -59,18 +61,24 @@ files:
 id: TASK-009
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    - `clienteSenhaAleatoria(int $tamanho = 16): string` (helper `clientes_helper`): CSPRNG, alfabeto sem I/O/l/o/0/1, `InvalidArgumentException` se tamanho < 12.
+    - `Refresh_token` (`TIPOS = ['usuario','cliente']`):
+      - `emitir(int $donoId, ?ip, ?ua, ?familia, string $tipo = 'usuario'): ?string` (tipo inválido lança; sem coluna `tipo` e tipo 'cliente' devolve null + log).
+      - `girar(string $token, ?ip, ?ua, string $tipo = 'usuario'): array`: token de outro tipo = `['ok'=>false,'motivo'=>'invalido']` sem consumir; reuso loga `refresh reuso tipo=%s dono=%d`.
+      - `revogarDoUsuario(int $donoId, string $tipo = 'usuario'): void`.
+    - `Clientes_model::registrarTrocaDeSenha(int $idCliente, string $hash, bool $exigirTroca): bool`: transação que grava senha/`senha_trocar`, incrementa `sessao_versao` e `token_versao` e revoga refresh tipo cliente; false (cliente inexistente ou falha) desfaz tudo e loga `transacao rollback operacao=troca_senha_cliente id=N`.
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/SenhaClienteTest.php tests/Unit/ApiAutenticacaoTest.php
 title: 'Senha do cliente: gerador, troca transacional e refresh por tipo'
-updated_at: "2026-11-03 18:41:20"
+updated_at: "2026-11-03 19:48:51"
 ---
 ## Contexto
 

@@ -3,53 +3,55 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 18:50:01"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDaOsApagaTudoQueEDela tests/Unit/OsVendasTransacaoTest.php
       text: Os_model::excluirComDependentes(3, ...) apaga OS, serviços, produtos, anexos, anotações e histórico e devolve true
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNoMeioDaExclusaoDaOsMantemTudo tests/Unit/OsVendasTransacaoTest.php
       text: Falha no DELETE da OS mantém serviços 2, produtos 1, anexos 1, anotações 1, histórico 2 e a OS, devolve false e loga 'transacao rollback operacao=excluir_os id=3'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDevolucaoDeEstoqueRodaDentroDaTransacao tests/Unit/OsVendasTransacaoTest.php
       text: O callable de devolução de estoque roda uma vez, antes de apagar os itens, e entra no rollback
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testExclusaoDaOsFaturadaApagaALancamento|testExclusaoDaOsApagaACobrancaCancelada' tests/Unit/OsVendasTransacaoTest.php
       text: Exclusão de OS faturada apaga o lançamento em aberto e a cobrança cancelada quando pedido
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeOsInexistenteDevolveFalse tests/Unit/OsVendasTransacaoTest.php
       text: OS inexistente devolve false
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testExclusaoDaVenda' tests/Unit/OsVendasTransacaoTest.php
       text: Vendas_model::excluirComDependentes apaga itens, venda e lançamento 41; com falha no DELETE da venda os itens continuam e loga 'transacao rollback operacao=excluir_venda id=9'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFaturarOsGravaTudo tests/Unit/OsVendasTransacaoTest.php
       text: Os_model::faturar devolve o id do lançamento e grava faturado 1, lancamento e status Faturado com histórico Aberto → Faturado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFaturarComFalhaNaOsNaoCriaLancamento tests/Unit/OsVendasTransacaoTest.php
       text: Os_model::faturar com falha no UPDATE da OS devolve null, não cria lançamento e mantém faturado 0
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFaturarComFalhaNoHistoricoReverte tests/Unit/OsVendasTransacaoTest.php
       text: Os_model::faturar com falha no histórico devolve null e reverte lançamento e OS
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFaturarVenda tests/Unit/OsVendasTransacaoTest.php
       text: Vendas_model::faturar grava lancamentos_id; com falha no UPDATE devolve null sem lançamento
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRegistrarStatus tests/Unit/OsVendasTransacaoTest.php
       text: registrarStatus devolve true ao gravar ou sem nada a gravar e false com log 'os historico falha os=3' quando o INSERT falha
-    - done: false
+    - done: true
       test: grep -q 'excluirComDependentes(' application/controllers/Os.php && grep -q 'excluirComDependentes(' application/controllers/Vendas.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Os.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Vendas.php
       text: Os::excluir e Vendas::excluir usam excluirComDependentes e mostram 'Não foi possível excluir. Nada foi alterado.' na falha
-    - done: false
+    - done: true
       test: grep -q 'os_model->faturar(' application/controllers/Os.php && grep -q 'vendas_model->faturar(' application/controllers/Vendas.php && ! grep -nE 'trans_(start|complete)\(' application/controllers/Os.php application/controllers/Vendas.php
       text: Os faturar() dos dois controllers delegam ao model e não abrem transação no controller
-    - done: false
+    - done: true
       test: grep -q 'armazenamentoApagar(' application/controllers/Os.php && ! grep -n '@unlink' application/controllers/Os.php
       text: Os arquivos dos anexos saem por armazenamentoApagar, sem @unlink
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/OsListagemTest.php tests/Unit/VendasListagemTest.php tests/Unit/VendasTelaTest.php tests/Unit/OsTelaTest.php tests/Unit/OsFormularioTest.php
       text: As suítes de OS e vendas existentes continuam verdes com as asserções de código atualizadas
 deps:
     - TASK-001
+diff_base: a5c8f783a5fa6ac3a9122bb936a3a071b4a83967
+diff_tip: 9498e35785228750d1bb42d24fdccf1cf221a5fa
 files:
     - application/models/Os_model.php
     - application/models/Vendas_model.php
@@ -62,18 +64,26 @@ files:
 id: TASK-015
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — contrato entregue (TASK-015)**
+
+    - `Os_model::excluirComDependentes(int $idOs, bool $excluirCobranca, ?int $idLancamentoFatura, bool $faturada, ?callable $dentroDaTransacao = null): bool` — `true` = tudo apagado e commitado; `false` = rollback (nada mudou), log `error` `transacao rollback operacao=excluir_os id=<id>`. O callable roda uma vez, após o BEGIN e antes de apagar itens, e entra no rollback. OS inexistente devolve `false`.
+    - `Vendas_model::excluirComDependentes(int $idVenda, bool $excluirCobranca, ?int $idLancamentoFatura, bool $faturada, ?callable $dentroDaTransacao = null): bool` — idem, log `operacao=excluir_venda`.
+    - `Os_model::faturar(int $idOs, array $lancamento, array $dadosDaOs, string $statusAnterior, ?int $usuario): ?int` — id do lançamento criado; `null` = rollback, log `operacao=faturar_os`. Grava `os.lancamento` e o histórico `statusAnterior → status`.
+    - `Vendas_model::faturar(int $idVenda, array $lancamento, array $dadosDaVenda): ?int` — grava `vendas.lancamentos_id`; `null` = rollback, log `operacao=faturar_venda`.
+    - `Os_model::registrarStatus(...)`: agora `bool` — `true` gravado ou nada a gravar; `false` com log `os historico falha os=<id>`.
+    - Painel: `Os::excluir`/`Vendas::excluir` mostram flashdata `error` "Não foi possível excluir. Nada foi alterado." na falha; arquivos de anexo saem por `armazenamentoApagar()` só após o commit. `Os::faturar`/`Vendas::faturar` respondem 500 `{"result": false, "message": "Não foi possível faturar a OS|venda. Nada foi alterado."}` quando o model devolve `null`.
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/OsVendasTransacaoTest.php tests/Unit/OsListagemTest.php tests/Unit/VendasListagemTest.php tests/Unit/VendasTelaTest.php tests/Unit/OsTelaTest.php
 title: Exclusão e faturamento de OS e vendas em transação
-updated_at: "2026-11-03 18:50:01"
+updated_at: "2026-11-03 19:47:40"
 ---
 ## Contexto
 

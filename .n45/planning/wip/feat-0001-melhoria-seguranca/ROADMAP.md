@@ -71,14 +71,14 @@ phases:
             - TASK-002
           id: TASK-009
           persona: backend
-          status: pending
+          status: done
           title: 'Senha do cliente: gerador, troca transacional e refresh por tipo'
         - complexity: M
           deps:
             - TASK-005
           id: TASK-010
           persona: backend
-          status: pending
+          status: done
           title: Consulta de pagamento nos gateways para o webhook
         - complexity: G
           deps:
@@ -95,7 +95,7 @@ phases:
             - TASK-002
           id: TASK-012
           persona: backend
-          status: pending
+          status: done
           title: Fila de e-mail com lock, reserva atômica e tentativas
         - complexity: M
           deps:
@@ -116,7 +116,7 @@ phases:
             - TASK-001
           id: TASK-015
           persona: backend
-          status: pending
+          status: done
           title: Exclusão e faturamento de OS e vendas em transação
         - complexity: M
           deps: []
@@ -271,5 +271,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 18:31:22"
+updated_at: "2026-11-03 19:48:30"
 ---

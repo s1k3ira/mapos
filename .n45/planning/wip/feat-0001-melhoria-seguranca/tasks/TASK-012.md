@@ -3,54 +3,56 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 18:46:02"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLockOcupadoNaoEnviaNada tests/Unit/EmailFilaTest.php
       text: 'Lock ocupado: processarFila() devolve ignorado = true, não envia nada e não altera nenhuma linha'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCicloNormalEnviaEContaTentativa tests/Unit/EmailFilaTest.php
       text: 'Ciclo normal com 3 pending: todos sent com tentativas = 1 e retorno reservados 3, enviados 3, falhas 0, definitivos 0'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testReservaNoMaximoUmLoteDeCinquenta tests/Unit/EmailFilaTest.php
       text: Com 60 pending só os 50 de menor id são reservados; os outros 10 seguem pending sem reservado_por
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testDuasExecucoesNaoReservamOMesmoEmail|testPendingComCincoTentativasNaoEReservado' tests/Unit/EmailFilaTest.php
       text: Duas execuções seguidas não reservam o mesmo e-mail e pending com tentativas = 5 não é reservado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExcecaoNumEmailNaoImpedeOsDemaisDoLote tests/Unit/EmailFilaTest.php
       text: 'Exceção num e-mail não impede os demais do lote: 1 e 3 sent, 2 failed com tentativas = 1'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testQuintaFalhaEDefinitiva tests/Unit/EmailFilaTest.php
       text: Falha na quinta tentativa fica failed e conta em definitivos
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaoLogaOCorpo tests/Unit/EmailFilaTest.php
       text: Falha de envio loga 'email_fila falha id=2 tentativas=1' e nenhum log contém o marcador do corpo (link de reset)
-    - done: false
+    - done: true
       test: grep -qE "print_debugger\(\['headers'\]\)" application/libraries/MY_Email.php && ! grep -nE 'print_debugger\(\)' application/libraries/MY_Email.php
       text: O log de falha usa print_debugger só com cabeçalhos
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRetryReabreSoFalhasComTentativasRestantes tests/Unit/EmailFilaTest.php
       text: 'reabrirFila(): failed com tentativas < 5 volta a pending e com 5 continua failed; retorno com reabertos exato'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testReservaExpirada tests/Unit/EmailFilaTest.php
       text: 'reabrirFila(): sending com reserva de 16 min volta a pending (reserva limpa), com 5 tentativas vira failed, com 10 min continua sending, e o legado sem reservado_em segue a data'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testCodigoDeSaidaZeroNoCicloNormal|testCodigoDeSaidaZeroComLockOcupado' tests/Unit/EmailFilaTest.php
       text: executarCiclo('process') normal devolve 0 e loga 'email_fila ciclo=process reservados=3 enviados=3 falhas=0 definitivos=0'; lock ocupado devolve 0 e loga 'ignorado'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCodigoDeSaidaUmComErroDeBanco tests/Unit/EmailFilaTest.php
       text: executarCiclo com erro de banco devolve 1 e loga 'email_fila ciclo=process erro=RuntimeException'
-    - done: false
+    - done: true
       test: test "$(grep -cE 'executarCiclo\(.(process|retry).,' application/controllers/Email.php)" -ge 2
       text: process() e retry() delegam a executarCiclo com a fila
-    - done: false
+    - done: true
       test: '! grep -nE "where\(\"\(date <|status = ''failed''\"\)" application/libraries/MY_Email.php'
       text: O retry não monta WHERE por concatenação de data (usa bindings)
-    - done: false
+    - done: true
       test: composer analyse
       text: PHPStan passa sem acrescentar entradas na baseline
 deps:
     - TASK-001
     - TASK-002
+diff_base: 51c49aad79e20cc8d8eab463e1d7047a0944cc24
+diff_tip: 7cc099b143f25fe3e377acf9df266dc9cc04c8ae
 files:
     - application/libraries/MY_Email.php
     - application/controllers/Email.php
@@ -60,18 +62,23 @@ files:
 id: TASK-012
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **MY_Email** (`application/libraries/MY_Email.php`): constantes `MAX_TENTATIVAS=5`, `LOTE=50`, `RESERVA_EXPIRA_MINUTOS=15`, `NOME_DO_LOCK='mapos_email_fila'`.
+    - `processarFila(): array{ignorado,reservados,enviados,falhas,definitivos}` — GET_LOCK, reserva atômica por lote, tentativa contada na reserva; falha loga só cabeçalhos. Lança `RuntimeException` em erro de banco.
+    - `reabrirFila(): array{reabertos,definitivos}` — failed com tentativas<5 e sending expirado (15 min) voltam a pending; sending expirado com 5 tentativas vira failed. Ponto de extensão do ciclo `retry` para a retenção.
+    - Removidos: `send_queue()`, `retry_queue()`, `start_process()`. Enfileiramento (`send()`) inalterado.
+    **Controller Email**: `executarCiclo(string $ciclo, object $fila): int` (0 ok/ignorado, 1 falha técnica; logs `email_fila ciclo=...`) e `sair(int)`; cron `email/process` e `email/retry` agora saem com o código.
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/EmailFilaTest.php
 title: Fila de e-mail com lock, reserva atômica e tentativas
-updated_at: "2026-11-03 18:46:02"
+updated_at: "2026-11-03 19:39:47"
 ---
 ## Contexto
 

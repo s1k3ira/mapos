@@ -3,41 +3,43 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 18:42:19"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testMercadoPagoDevolveOFormatoComumComValorEmCentavos|testMercadoPagoArredondaCentavos' tests/Unit/GatewayConsultaPagamentoTest.php
       text: MercadoPago::consultarPagamento('123456') devolve ['charge_id' => '123456', 'status' => 'approved', 'valor_centavos' => 15090] e 0.1 vira 10 centavos
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMercadoPagoIdNaoNumericoRecusaSemConsultar tests/Unit/GatewayConsultaPagamentoTest.php
       text: MercadoPago com id não numérico lança GatewayRecusouException('Pagamento não encontrado no Mercado Pago.') sem chamar o SDK
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMercadoPagoFalhasDaConsulta tests/Unit/GatewayConsultaPagamentoTest.php
       text: 'MercadoPago: MPApiException 404 vira GatewayRecusouException e 500 vira GatewayIndisponivelException, com log ''op=consultar_webhook gateway=MercadoPago'''
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEfiConsultaANotificacaoEDetalhaACobranca tests/Unit/GatewayConsultaPagamentoTest.php
       text: 'Efí: notificação com charge_id 111 + detailCharge {status paid, total 5000} devolve [''charge_id'' => ''111'', ''status'' => ''paid'', ''valor_centavos'' => 5000] e o SDK recebe token e id corretos'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEfiSemChargeIdNaNotificacaoRecusaSemDetalhar tests/Unit/GatewayConsultaPagamentoTest.php
       text: 'Efí: notificação sem charge_id lança GatewayRecusouException(''Notificação da Efí sem cobrança.'') sem chamar detailCharge'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEfiIndisponivelNaConsulta tests/Unit/GatewayConsultaPagamentoTest.php
       text: 'Efí: getNotification com code 500 lança GatewayIndisponivelException e loga ''op=consultar_webhook gateway=GerencianetSdk'' com http=500'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAsaas tests/Unit/GatewayConsultaPagamentoTest.php
       text: Asaas::consultarPagamento('pay_9') devolve ['charge_id' => 'pay_9', 'status' => 'RECEIVED', 'valor_centavos' => 15090]; errors → Recusou; false → Indisponivel
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testStatusPago tests/Unit/GatewayConsultaPagamentoTest.php
       text: statusPago() aceita só os status pagos de cada gateway (paid/settled, approved, RECEIVED/CONFIRMED/RECEIVED_IN_CASH/DUNNING_RECEIVED), com comparação exata e gateway desconhecido = false
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLogDaConsultaNaoTemTokenNemId tests/Unit/GatewayConsultaPagamentoTest.php
       text: O log da consulta não contém o token da notificação nem o id do pagamento
-    - done: false
+    - done: true
       test: '! grep -nE ''consultarPagamento[^\n]*(curl_|file_get_contents|http://|https://)'' application/libraries/Gateways/MercadoPago.php application/libraries/Gateways/GerencianetSdk.php application/libraries/Gateways/Asaas.php'
       text: A consulta usa só o SDK (sem URL montada a partir de entrada) nos três gateways
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/GatewayMercadoPagoTest.php tests/Unit/GatewayAsaasEfiTest.php
       text: As suítes de gateway existentes continuam verdes
 deps:
     - TASK-005
+diff_base: 7cc099b143f25fe3e377acf9df266dc9cc04c8ae
+diff_tip: a5c8f783a5fa6ac3a9122bb936a3a071b4a83967
 files:
     - application/libraries/Gateways/BasePaymentGateway.php
     - application/libraries/Gateways/MercadoPago.php
@@ -47,18 +49,25 @@ files:
 id: TASK-010
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — consulta de pagamento nos gateways (para o webhook)**
+
+    - `BasePaymentGateway::STATUS_PAGOS` (GerencianetSdk: paid/settled · MercadoPago: approved · Asaas: RECEIVED/CONFIRMED/RECEIVED_IN_CASH/DUNNING_RECEIVED) e `BasePaymentGateway::statusPago(string $gateway, string $status): bool` (comparação estrita; gateway desconhecido = false).
+    - `consultarPagamento(string $idExterno): array` público em `MercadoPago`, `GerencianetSdk` e `Asaas` (fora da interface `PaymentGateway`), retorno `['charge_id' => string, 'status' => string, 'valor_centavos' => int]`.
+      - `$idExterno`: MP = `data.id` (não numérico → `GatewayRecusouException`); Efí = token da notificação (getNotification → último `identifiers.charge_id` → detailCharge; sem cobrança → `GatewayRecusouException('Notificação da Efí sem cobrança.')`); Asaas = `payment.id`.
+      - Recusa do provedor → `GatewayRecusouException`; falha técnica/5xx/rede/code≠200 → `GatewayIndisponivelException`. Log `op=consultar_webhook cobranca=-`, sem token nem id.
+    - `MercadoPago::buscarPagamentoMp(int $id): object` protected (ponto de substituição em teste).
 persona: backend
 phase: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/GatewayConsultaPagamentoTest.php tests/Unit/GatewayMercadoPagoTest.php tests/Unit/GatewayAsaasEfiTest.php
 title: Consulta de pagamento nos gateways para o webhook
-updated_at: "2026-11-03 18:42:19"
+updated_at: "2026-11-03 19:46:57"
 ---
 ## Contexto
 
