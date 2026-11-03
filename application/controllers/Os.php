@@ -718,9 +718,7 @@ class Os extends MY_Controller
         }
 
         if (isset($os->idCobranca) != null) {
-            if ($os->status == 'canceled') {
-                $this->os_model->delete('cobrancas', 'os_id', $id);
-            } else {
+            if ($os->status != 'canceled') {
                 $this->session->set_flashdata('error', 'Existe uma cobrança associada a esta OS, deve cancelar e/ou excluir a cobrança primeiro!');
                 redirect($listagem);
             }
@@ -733,27 +731,27 @@ class Os extends MY_Controller
             redirect($listagem);
         }
 
-        //Verifica para poder fazer a devolução do produto para o estoque caso OS seja excluida.
-        if (strtolower($osStockRefund->status) != 'cancelado') {
-            $this->devolucaoEstoque($id);
+        // Os arquivos dos anexos saem do disco junto com os registros, só depois do
+        // commit (ver osArquivosDosAnexos()).
+        $arquivos = osArquivosDosAnexos($this->os_model->getAnexos($id), FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'anexos');
+
+        // Só chega aqui com cobrança cancelada (ou sem cobrança); a devolução do
+        // estoque roda na transação, salvo se o cancelamento já devolveu.
+        $excluiu = $this->os_model->excluirComDependentes(
+            $id,
+            isset($os->idCobranca),
+            isset($osStockRefund->lancamento) ? (int) $osStockRefund->lancamento : null,
+            (int) $osStockRefund->faturado === 1,
+            strtolower($osStockRefund->status) !== 'cancelado' ? fn () => $this->devolucaoEstoque($id) : null
+        );
+
+        if (! $excluiu) {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
+            redirect($listagem);
         }
 
-        // Os arquivos dos anexos saem do disco junto com os registros (só os que
-        // ficam dentro de assets/anexos; ver osArquivosDosAnexos()).
-        foreach (osArquivosDosAnexos($this->os_model->getAnexos($id), FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'anexos') as $arquivo) {
-            @unlink($arquivo);
-        }
-
-        $this->os_model->delete('servicos_os', 'os_id', $id);
-        $this->os_model->delete('produtos_os', 'os_id', $id);
-        $this->os_model->delete('anexos', 'os_id', $id);
-        $this->os_model->delete('anotacoes_os', 'os_id', $id);
-        if ($this->os_model->historicoDisponivel()) {
-            $this->os_model->delete('os_historico', 'os_id', $id);
-        }
-        $this->os_model->delete('os', 'idOs', $id);
-        if ((int) $osStockRefund->faturado === 1) {
-            $this->os_model->excluirFatura($id, isset($osStockRefund->lancamento) ? (int) $osStockRefund->lancamento : null);
+        foreach ($arquivos as $arquivo) {
+            armazenamentoApagar($arquivo);
         }
 
         log_info('Removeu uma OS. ID: ' . $id);
@@ -1167,7 +1165,7 @@ class Os extends MY_Controller
             if ($this->os_model->anexar($idOs, $nome, '', $thumb, $relativo)) {
                 $enviados++;
             } else {
-                @unlink($caminho);
+                armazenamentoApagar($caminho);
                 $falhas[] = ($arquivo['name'] ?? 'Arquivo') . ': não foi possível gravar no banco.';
             }
         }
@@ -1217,7 +1215,7 @@ class Os extends MY_Controller
         }
 
         foreach (osArquivosDosAnexos([$anexo], FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'anexos') as $arquivo) {
-            @unlink($arquivo);
+            armazenamentoApagar($arquivo);
         }
 
         if (! $this->os_model->delete('anexos', 'idAnexos', $idAnexo)) {
@@ -1343,31 +1341,16 @@ class Os extends MY_Controller
             return;
         }
 
-        $this->db->trans_start();
-
-        $idLancamento = $this->os_model->add('lancamentos', $lancamento, true);
-        if (! is_numeric($idLancamento)) {
-            $this->db->trans_rollback();
-
-            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível criar o lançamento. Tente de novo.']);
-
-            return;
-        }
-
-        $this->os_model->edit('os', [
+        $idLancamento = $this->os_model->faturar($idOs, $lancamento, [
             'faturado' => 1,
             'valorTotal' => $totais['bruto'],
             'desconto' => $totais['desconto'],
             'valor_desconto' => $totais['total'],
             'status' => 'Faturado',
-            'lancamento' => (int) $idLancamento,
-        ], 'idOs', $idOs);
-        $this->os_model->registrarStatus($idOs, (string) $os->status, 'Faturado', $this->usuarioLogado());
+        ], (string) $os->status, $this->usuarioLogado());
 
-        $this->db->trans_complete();
-
-        if ($this->db->trans_status() === false) {
-            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível faturar a OS. Tente de novo.']);
+        if ($idLancamento === null) {
+            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível faturar a OS. Nada foi alterado.']);
 
             return;
         }

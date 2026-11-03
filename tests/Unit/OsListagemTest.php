@@ -260,9 +260,9 @@ final class OsListagemTest extends MaposTestCase
         $this->assertNotEmpty($gerenciar);
         $this->assertStringContainsString("'Nova OS'", $gerenciar[0]);
         $this->assertNotEmpty($excluir);
-        $this->assertStringContainsString("delete('anotacoes_os', 'os_id', \$id)", $excluir[0]);
+        $this->assertStringContainsString('excluirComDependentes(', $excluir[0]);
         $this->assertStringContainsString('osArquivosDosAnexos(', $excluir[0]);
-        $this->assertStringContainsString('excluirFatura(', $excluir[0]);
+        $this->assertStringContainsString('armazenamentoApagar(', $excluir[0]);
         $this->assertStringNotContainsString('${', $excluir[0]);
 
         $view = (string) file_get_contents(APPPATH . 'views/os/os.php');

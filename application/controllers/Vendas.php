@@ -519,9 +519,7 @@ class Vendas extends MY_Controller
         }
 
         if (isset($venda->idCobranca) != null) {
-            if ($venda->status == 'canceled') {
-                $this->vendas_model->delete('cobrancas', 'vendas_id', $id);
-            } else {
+            if ($venda->status != 'canceled') {
                 $this->session->set_flashdata('error', 'Existe uma cobrança associada a esta venda, deve cancelar e/ou excluir a cobrança primeiro!');
                 redirect($listagem);
             }
@@ -529,15 +527,19 @@ class Vendas extends MY_Controller
 
         // getByIdCobrancas() devolve o status da cobrança no lugar do da venda.
         $vendaAtual = $this->vendas_model->getById($id);
-        // Os produtos voltam ao estoque, a não ser que o cancelamento já os tenha devolvido.
-        if (strtolower((string) $vendaAtual->status) !== 'cancelado') {
-            $this->devolucaoEstoque($id);
-        }
+        // Só chega aqui com cobrança cancelada (ou sem cobrança). Os produtos voltam
+        // ao estoque, na transação, a não ser que o cancelamento já os tenha devolvido.
+        $excluiu = $this->vendas_model->excluirComDependentes(
+            $id,
+            isset($venda->idCobranca),
+            isset($vendaAtual->lancamentos_id) ? (int) $vendaAtual->lancamentos_id : null,
+            (int) $vendaAtual->faturado === 1,
+            strtolower((string) $vendaAtual->status) !== 'cancelado' ? fn () => $this->devolucaoEstoque($id) : null
+        );
 
-        $this->vendas_model->delete('itens_de_vendas', 'vendas_id', $id);
-        $this->vendas_model->delete('vendas', 'idVendas', $id);
-        if ((int) $vendaAtual->faturado === 1) {
-            $this->vendas_model->excluirFatura($id, isset($vendaAtual->lancamentos_id) ? (int) $vendaAtual->lancamentos_id : null);
+        if (! $excluiu) {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
+            redirect($listagem);
         }
 
         log_info('Removeu uma venda. ID: ' . $id);
@@ -817,29 +819,15 @@ class Vendas extends MY_Controller
             return;
         }
 
-        $this->db->trans_start();
-
-        $idLancamento = $this->vendas_model->add('lancamentos', $lancamento, true);
-        if (! is_numeric($idLancamento)) {
-            $this->db->trans_rollback();
-
-            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível criar o lançamento. Tente de novo.']);
-
-            return;
-        }
-
-        $this->vendas_model->edit('vendas', [
+        $idLancamento = $this->vendas_model->faturar($idVenda, $lancamento, [
             'faturado' => 1,
             'valorTotal' => $totais['bruto'],
             'valor_desconto' => $totais['total'],
-            'lancamentos_id' => (int) $idLancamento,
             'status' => 'Faturado',
-        ], 'idVendas', $idVenda);
+        ]);
 
-        $this->db->trans_complete();
-
-        if ($this->db->trans_status() === false) {
-            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível faturar a venda. Tente de novo.']);
+        if ($idLancamento === null) {
+            $this->responderJson(500, ['result' => false, 'message' => 'Não foi possível faturar a venda. Nada foi alterado.']);
 
             return;
         }

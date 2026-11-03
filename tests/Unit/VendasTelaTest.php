@@ -868,8 +868,9 @@ final class VendasTelaTest extends MaposTestCase
         $this->assertNotEmpty($excluir);
         $this->assertStringContainsString("strtolower((string) \$vendaAtual->status) !== 'cancelado'", $excluir[0]);
         $this->assertStringContainsString('$this->devolucaoEstoque($id)', $excluir[0]);
-        $this->assertLessThan(strpos($excluir[0], "delete('itens_de_vendas'"), strpos($excluir[0], '$this->devolucaoEstoque($id)'), 'Os produtos voltam antes de os itens serem apagados.');
-        $this->assertStringContainsString('excluirFatura(', $excluir[0]);
+        $this->assertGreaterThan(strpos($excluir[0], 'excluirComDependentes('), strpos($excluir[0], "strtolower((string) \$vendaAtual->status) !== 'cancelado'"), 'O estoque só volta se o status não é cancelado, decidido na chamada transacional.');
+        $this->assertStringContainsString('fn () => $this->devolucaoEstoque($id)', $excluir[0], 'A devolução roda dentro da transação do model.');
+        $this->assertStringContainsString('excluirComDependentes(', $excluir[0]);
         $this->assertStringContainsString('listagemQuery(', $excluir[0]);
         $this->assertStringNotContainsString('${', $excluir[0]);
     }
