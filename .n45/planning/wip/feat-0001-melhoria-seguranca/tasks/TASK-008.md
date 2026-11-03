@@ -3,49 +3,51 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 16:02:35"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSenhaApareceUmaUnicaVezSoNoCampoReadonly tests/Unit/SenhaInicialViewTest.php
       text: A senha gerada aparece exatamente uma vez no HTML, só no value do input readonly
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Email tests/Unit/SenhaInicialViewTest.php
       text: 'Texto de envio segue emailEnviado: true → ''Também enviada por e-mail ao cliente.''; false → ''Não foi possível enviar por e-mail: repasse a senha ao cliente.'' (nunca os dois)'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Escap tests/Unit/SenhaInicialViewTest.php
       text: Nome do cliente sai escapado
-    - done: false
+    - done: true
       test: grep -qE 'flex max-w-4xl flex-col gap-4 pt-2 pb-8' application/views/clientes/senha_inicial.php && grep -qE 'font-display text-heading-xl' application/views/clientes/senha_inicial.php
       text: A tela usa o wrapper de formulário com largura máxima (max-w-4xl) e o h1 em font-display text-heading-xl
-    - done: false
+    - done: true
       test: grep -cE "component\('(alert|input|button|card)'" application/views/clientes/senha_inicial.php | grep -qvE '^[0-3]$' && ! grep -nE 'font-family|font-sans|font-\[|style=' application/views/clientes/senha_inicial.php
       text: Só componentes do inventário e nenhuma família tipográfica declarada na view (Rubik herdada da base)
-    - done: false
+    - done: true
       test: grep -qE "'class' => 'font-mono'" application/views/clientes/senha_inicial.php && grep -qE "'readonly' => true" application/views/clientes/senha_inicial.php && grep -qE "'label' => 'Senha inicial'" application/views/clientes/senha_inicial.php
       text: O campo da senha usa font-mono, é readonly e tem rótulo visível 'Senha inicial'
-    - done: false
+    - done: true
       test: grep -qE "'icon_only' => true" application/views/clientes/senha_inicial.php && grep -qE 'aria-pressed' application/views/clientes/senha_inicial.php && grep -qE "'label' => 'Copiar senha'" application/views/clientes/senha_inicial.php
       text: Mostrar/ocultar tem rótulo acessível não renderizado (icon_only) com aria-pressed e aria-controls; 'Copiar senha' tem rótulo visível
-    - done: false
+    - done: true
       test: grep -qE "'role' => 'status'" application/views/clientes/senha_inicial.php
       text: O aviso de senha é alert warning com role=status
-    - done: false
+    - done: true
       test: php scripts/check-inline-script.php && php scripts/check-escape.php
       text: Sem script inline e sem subir a baseline de escape
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='copiar' tests/js/senha-inicial.test.mjs
       text: Copiar com sucesso avisa só 'Copiado' (success); sem Clipboard seleciona o campo e avisa 'Copie manualmente' (warning)
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='mostrar|visibilidade' tests/js/senha-inicial.test.mjs
       text: Mostrar/ocultar alterna type password/text e aria-pressed
-    - done: false
+    - done: true
       test: '! grep -nE ''localStorage|sessionStorage|console\.log'' assets/js/modules/clientes/senha-inicial.js'
       text: O módulo não guarda nem imprime a senha
-    - done: false
+    - done: true
       test: grep -nE "deepEqual\(avisos" tests/js/senha-inicial.test.mjs
       text: Os testes JS assertam o aviso exato, não só que algo foi chamado
-    - done: false
+    - done: true
       test: npm run build && git diff --quiet -- assets/dist
       text: CSS compilado em dia com as views
 deps: []
+diff_base: 7abc7b255e07a0603d72bd588dc63c88b90503d5
+diff_tip: 4beb058dd429d4e0abd72609b78beae45d7e1b41
 files:
     - application/views/clientes/senha_inicial.php
     - assets/js/modules/clientes/senha-inicial.js
@@ -55,18 +57,24 @@ files:
 id: TASK-008
 linter: php scripts/check-escape.php && php scripts/check-inline-script.php
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Frontend — tela da senha inicial (sem rota própria; renderizada pelo controller de `Clientes::adicionar`)**
+
+    - View `application/views/clientes/senha_inicial.php`. Variáveis fixas: `$cliente` (objeto com `idClientes`, `nomeCliente`), `$senhaInicial` (string), `$emailEnviado` (bool). Só a view (conteúdo de `.v5-conteudo`); o controller chama o layout e deve responder com `Cache-Control: no-store`.
+    - A senha aparece uma única vez, no `value` do `input#senha-inicial` readonly `type="password"` (nunca em `data-*`, título ou texto). Texto de envio exclusivo conforme `$emailEnviado`; nome escapado; links `clientes/visualizar/<id>` e `clientes`.
+    - Módulo JS `assets/js/modules/clientes/senha-inicial.js` (ligado por `js_module('clientes/senha-inicial')`): `default iniciar(raiz)`, `copiarSenha(campo, area, avisar, botao)` (toast `success` "Copiado" / `warning` "Copie manualmente") e `alternarVisibilidade(campo, botao)`.
+    - `assets/dist/app.css` em dia.
 persona: frontend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
     green: false
     red: false
     refactor: false
 tests: application/vendor/bin/phpunit tests/Unit/SenhaInicialViewTest.php && node --test tests/js/senha-inicial.test.mjs
 title: Tela da senha inicial do cliente exibida uma única vez
-updated_at: "2026-11-03 16:02:35"
+updated_at: "2026-11-03 17:12:52"
 ---
 ## Contexto
 

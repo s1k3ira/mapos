@@ -12,13 +12,13 @@ phases:
           deps: []
           id: TASK-001
           persona: backend
-          status: pending
+          status: done
           title: 'Suporte de teste: captura de log e falha em Deprecated'
         - complexity: M
           deps: []
           id: TASK-002
           persona: dba
-          status: pending
+          status: done
           title: Migrations de webhooks, refresh por tipo, troca de senha do cliente e reserva da fila
         - complexity: G
           deps:
@@ -52,13 +52,13 @@ phases:
           deps: []
           id: TASK-007
           persona: frontend
-          status: pending
+          status: done
           title: 'Cliente HTTP: sessão expirada, timeout, JSON inválido e erros visíveis'
         - complexity: M
           deps: []
           id: TASK-008
           persona: frontend
-          status: pending
+          status: done
           title: Tela da senha inicial do cliente exibida uma única vez
     - name: Phase 2 — Pagamento por webhook, fila de e-mail confiável e conta do cliente
       status: pending
@@ -269,5 +269,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 16:28:49"
+updated_at: "2026-11-03 17:17:55"
 ---

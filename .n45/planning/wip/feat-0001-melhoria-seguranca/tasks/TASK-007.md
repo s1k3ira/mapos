@@ -3,49 +3,51 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 16:01:17"
 criteria:
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='401 com redirect' tests/js/http.test.mjs
       text: requisicao() com 401 JSON {redirect} da mesma origem chama o aviso warning 'Sua sessão expirou. Entre novamente.', navega para o redirect após 1500 ms e a promessa não resolve
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='redirected' tests/js/http.test.mjs
       text: Resposta HTML com redirected=true é tratada como sessão expirada e navega para resposta.url
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='outra origem' tests/js/http.test.mjs
       text: redirect de outra origem não navega e rejeita com ErroHttp 401
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='timeout|rede|abort' tests/js/http.test.mjs
       text: fetch que não responde dentro do timeout rejeita com ErroHttp status 0 e a mensagem de conexão; falha de rede idem; abort do chamador mantém o AbortError
-    - done: false
+    - done: true
       test: grep -nE 'clearTimeout' assets/js/lib/http.js
       text: O temporizador do timeout é limpo ao terminar a requisição
-    - done: false
+    - done: true
       test: grep -nE 'TIMEOUT_PADRAO_MS *= *30000' assets/js/lib/http.js
       text: Timeout padrão de 30 s
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='JSON inválido' tests/js/http.test.mjs
       text: Corpo JSON inválido rejeita com ErroHttp 'Resposta inesperada do servidor.' com o status da resposta (200 e 500)
-    - done: false
+    - done: true
       test: node --test tests/js/layout.test.mjs
       text: gravarNoServidor e gravarCorNoServidor devolvem false e avisam com toast danger a mensagem do ErroHttp (ou a mensagem padrão para outro erro)
-    - done: false
+    - done: true
       test: '! grep -nE ''catch *\{'' assets/js/modules/layout/shell.js'
       text: shell.js não tem catch vazio
-    - done: false
+    - done: true
       test: grep -cE 'mostrarToast|avisar\(' assets/js/modules/layout/shell.js | grep -qvE '^[0-3]$'
       text: Cada catch e rejeição tratada de shell.js chama mostrarToast ou o avisar
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='unhandledrejection|tratarRejeicao' tests/js/http.test.mjs
       text: app.js registra o tratador de unhandledrejection, que mostra toast danger com a mensagem do ErroHttp ou 'Algo deu errado. Tente novamente.' e chama console.error
-    - done: false
+    - done: true
       test: node --test tests/js/modulos.test.mjs
       text: Os testes de requisicao já existentes continuam passando
-    - done: false
+    - done: true
       test: grep -nE 'mock\.timers\.enable' tests/js/http.test.mjs
       text: Os testes de timer restauram o relógio falso (mock.timers do node:test por teste, sem setTimeout real de 30 s)
-    - done: false
+    - done: true
       test: '! grep -nE ''assert\.ok\(true\)|assert\.equal\(1, 1\)'' tests/js/http.test.mjs tests/js/layout.test.mjs'
       text: Nenhum teste da task usa asserção sempre-verde
 deps: []
+diff_base: 80bedc27fe953c8dbb4479518abe36a195e51dc8
+diff_tip: 7abc7b255e07a0603d72bd588dc63c88b90503d5
 files:
     - assets/js/lib/http.js
     - assets/js/app.js
@@ -54,18 +56,26 @@ files:
     - tests/js/layout.test.mjs
 id: TASK-007
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Frontend — `assets/js/lib/http.js`**
+    - `requisicao(url, { metodo, dados, headers, signal, timeout = TIMEOUT_PADRAO_MS })`: timeout via AbortController (limpa o temporizador); rede/timeout rejeita `ErroHttp(0, MENSAGEM_SEM_CONEXAO)`; abort do chamador mantém o `AbortError`; JSON inválido rejeita `ErroHttp(status, MENSAGEM_RESPOSTA_INVALIDA)`.
+    - Sessão expirada (401 JSON com `redirect` ou HTML com `redirected`, só mesma origem): `ambiente.avisar` warning, `ambiente.navegar` após `ambiente.esperaMs` (1500) e promessa pendente.
+    - Exports: `ambiente`, `TIMEOUT_PADRAO_MS` (30000), `MENSAGEM_SESSAO_EXPIRADA`, `MENSAGEM_SEM_CONEXAO`, `MENSAGEM_RESPOSTA_INVALIDA`, `destinoDeSessaoExpirada(resposta, corpo, origem)`, `ErroHttp`.
+
+    **`assets/js/app.js`**: `tratarRejeicao(evento, avisar)` (console.error + toast danger) e `registrarTratadorGlobal(alvo)` (unhandledrejection), registrado no carregamento.
+
+    **`assets/js/modules/layout/shell.js`**: `gravarNoServidor(url, modo, avisar)` e `gravarCorNoServidor(url, cor, avisar)` devolvem false e avisam a falha (toast danger); catches de `gravar()` e `lerAtalhos()` mostram toast.
 persona: frontend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: node --test tests/js/http.test.mjs tests/js/layout.test.mjs tests/js/modulos.test.mjs
 title: 'Cliente HTTP: sessão expirada, timeout, JSON inválido e erros visíveis'
-updated_at: "2026-11-03 16:01:17"
+updated_at: "2026-11-03 17:11:46"
 ---
 ## Contexto
 

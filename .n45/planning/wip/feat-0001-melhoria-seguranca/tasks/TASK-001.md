@@ -3,28 +3,30 @@ checkpoint: null
 complexity: P
 created_at: "2026-11-03 15:54:25"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLogDeErroFicaRegistradoComONivelEmMinusculas tests/Unit/SuporteDeTesteTest.php
       text: log_message('ERROR', ...) é capturado e $this->logs('error') devolve exatamente as mensagens daquele nível, em minúsculas
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/SuporteDeTesteTest.php && grep -qE '__mapos_logs.*=.*\[\]' tests/MaposTestCase.php
       text: 'Os logs são zerados entre testes: um teste novo começa com $this->logs() === []'
-    - done: false
+    - done: true
       test: grep -cE 'AssertionFailedError' tests/Unit/SuporteDeTesteTest.php | grep -qvE '^[0-2]$'
       text: assertLogContem falha quando nenhum log do nível contém o trecho e assertLogNaoContem falha quando algum log contém o trecho (testes com expectException(AssertionFailedError))
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Deprecated tests/Unit/SuporteDeTesteTest.php
       text: semDeprecated() reprova Deprecated disparado dentro da raiz informada, ignora o de fora dela e devolve o retorno da ação
-    - done: false
+    - done: true
       test: grep -nE 'finally' tests/MaposTestCase.php && grep -nE 'restore_error_handler' tests/MaposTestCase.php
       text: semDeprecated() restaura o error handler anterior mesmo quando a ação lança
-    - done: false
+    - done: true
       test: '! grep -nE ''assertTrue\(true\)|assertSame\(1, 1\)'' tests/Unit/SuporteDeTesteTest.php'
       text: Os testes dos helpers não usam asserção sempre-verde
-    - done: false
+    - done: true
       test: composer test
       text: A suíte inteira continua passando com o novo stub de log
 deps: []
+diff_base: 4beb058dd429d4e0abd72609b78beae45d7e1b41
+diff_tip: 6b7146759a20684847c695f666c3b11274131805
 files:
     - tests/bootstrap.php
     - tests/MaposTestCase.php
@@ -33,18 +35,25 @@ files:
 id: TASK-001
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    Contrato de suporte de teste entregue em `tests/MaposTestCase.php` (nenhum código de produção alterado):
+
+    - `protected function logs(?string $nivel = null): array` — lista de mensagens capturadas por `log_message()`, nível normalizado em minúsculas; zerada no `setUp()`.
+    - `protected function assertLogContem(string $nivel, string $trecho): void` — falha se nenhuma mensagem do nível contém o trecho.
+    - `protected function assertLogNaoContem(string $trecho): void` — falha se qualquer mensagem, de qualquer nível, contém o trecho.
+    - `protected function semDeprecated(callable $acao, ?string $raiz = null): mixed` — falha com `arquivo:linha mensagem` se houver Deprecated sob `$raiz` (padrão `APPPATH`, exceto `application/vendor/`); devolve o retorno da ação; handler sempre restaurado (`finally`).
+    - Stub de `log_message()` em `tests/bootstrap.php` acumula em `$GLOBALS['__mapos_logs']` (`['nivel','mensagem']`).
 persona: backend
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/SuporteDeTesteTest.php
 title: 'Suporte de teste: captura de log e falha em Deprecated'
-updated_at: "2026-11-03 15:54:25"
+updated_at: "2026-11-03 17:14:37"
 ---
 ## Contexto
 

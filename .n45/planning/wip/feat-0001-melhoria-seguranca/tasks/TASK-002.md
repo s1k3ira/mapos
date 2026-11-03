@@ -3,40 +3,42 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 15:55:19"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter WebhookEventos tests/Unit/MigrationsSegurancaTest.php
       text: Migration_create_webhook_eventos::up() cria a tabela com as colunas gateway, evento_id, cobranca_id, payload_hash, resultado, processado_em, created_at e o índice único (gateway, evento_id); down() remove a tabela
-    - done: false
+    - done: true
       test: grep -nE 'CREATE UNIQUE INDEX.*webhook_eventos_gateway_evento' application/database/migrations/20261103000000_create_webhook_eventos.php
       text: O índice único de webhook_eventos é criado por SQL explícito com o nome webhook_eventos_gateway_evento
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter RefreshTokens tests/Unit/MigrationsSegurancaTest.php
       text: Migration_add_tipo_to_api_refresh_tokens::up() deixa os tokens legados com tipo = 'usuario'; down() apaga os tokens tipo = 'cliente' antes de remover a coluna
-    - done: false
+    - done: true
       test: grep -nE "tipo.*cliente" application/database/migrations/20261103000100_add_tipo_to_api_refresh_tokens.php
       text: O down() da coluna tipo remove os refresh tokens de cliente
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Clientes tests/Unit/MigrationsSegurancaTest.php
       text: Migration_add_senha_trocar_sessao_versao_to_clientes::up() cria as duas colunas com valor 0 para cliente existente; down() remove as duas
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter EmailQueue tests/Unit/MigrationsSegurancaTest.php
       text: Migration_add_reserva_to_email_queue::up() cria tentativas (padrão 0), reservado_por e reservado_em e o índice email_queue_status_reserva; down() desfaz
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Cobrancas tests/Unit/MigrationsSegurancaTest.php
       text: Migration_add_index_charge_to_cobrancas::up() não cria cobrancas_charge_gateway quando já existe índice começando por charge_id, e cria quando não existe
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Falha tests/Unit/MigrationsSegurancaTest.php
       text: Toda migration lança RuntimeException quando a estrutura não existe depois da DDL (db_debug desligado)
-    - done: false
+    - done: true
       test: grep -lE 'throw new RuntimeException' application/database/migrations/20261103000000_create_webhook_eventos.php application/database/migrations/20261103000100_add_tipo_to_api_refresh_tokens.php application/database/migrations/20261103000200_add_senha_trocar_sessao_versao_to_clientes.php application/database/migrations/20261103000300_add_reserva_to_email_queue.php application/database/migrations/20261103000400_add_index_charge_to_cobrancas.php | wc -l | grep -qx 5
       text: Cada uma das 5 migrations confere o resultado e lança RuntimeException
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter Idempotente tests/Unit/MigrationsSegurancaTest.php
       text: Rodar up() duas vezes não duplica coluna/índice nem lança
-    - done: false
+    - done: true
       test: git diff --quiet HEAD -- banco.sql
       text: banco.sql não é alterado pela task
 deps: []
+diff_base: 6b7146759a20684847c695f666c3b11274131805
+diff_tip: 9ff22576e9a1ceba0abc367a8843ba69f445118e
 files:
     - application/database/migrations/20261103000000_create_webhook_eventos.php
     - application/database/migrations/20261103000100_add_tipo_to_api_refresh_tokens.php
@@ -47,14 +49,21 @@ files:
 id: TASK-002
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    Schema entregue por 5 migrations aditivas (timestamp, idempotentes, com conferência pós-DDL que lança `RuntimeException`; `banco.sql` intocado):
+
+    - `webhook_eventos(id BIGINT UNSIGNED AI, gateway ENUM('efi','mercadopago','asaas'), evento_id VARCHAR(128), cobranca_id INT NULL, payload_hash CHAR(64), resultado VARCHAR(20) NULL, processado_em DATETIME NULL, created_at DATETIME)` · UNIQUE `webhook_eventos_gateway_evento (gateway, evento_id)` · índices `webhook_eventos_cobranca`, `webhook_eventos_created` · InnoDB, sem FK.
+    - `api_refresh_tokens.tipo ENUM('usuario','cliente') NOT NULL DEFAULT 'usuario'` (após `id`) · índice `api_refresh_tokens_dono (tipo, usuario_id)`; índice simples `usuario_id` removido; `down()` apaga tokens `cliente` antes de remover a coluna.
+    - `clientes.senha_trocar TINYINT(1) NOT NULL DEFAULT 0` · `clientes.sessao_versao INT UNSIGNED NOT NULL DEFAULT 0`.
+    - `email_queue.tentativas TINYINT UNSIGNED NOT NULL DEFAULT 0` · `reservado_por CHAR(32) NULL` · `reservado_em DATETIME NULL` · índice `email_queue_status_reserva (status, reservado_por)`.
+    - `cobrancas` índice `cobrancas_charge_gateway (charge_id(64), payment_gateway(32))`, criado só se não houver índice começando por `charge_id`.
 persona: dba
 phase: 'Phase 1 — Base de segurança: schema, API, gateways e avisos de sessão'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tests: application/vendor/bin/phpunit tests/Unit/MigrationsSegurancaTest.php
 title: Migrations de webhooks, refresh por tipo, troca de senha do cliente e reserva da fila
-updated_at: "2026-11-03 15:55:19"
+updated_at: "2026-11-03 17:18:08"
 ---
 ## Contexto
 
