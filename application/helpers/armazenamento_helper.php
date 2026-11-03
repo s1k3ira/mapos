@@ -106,6 +106,70 @@ if (! function_exists('armazenamentoMimePermitido')) {
     }
 }
 
+if (! defined('ARMAZENAMENTO_MARCA_AUTHZ')) {
+    define('ARMAZENAMENTO_MARCA_AUTHZ', 'mod_authz_core');
+}
+
+if (! function_exists('armazenamentoSemAviso')) {
+    /**
+     * Executa uma operação de arquivo e devolve [resultado, aviso]: o E_WARNING
+     * que mkdir/file_put_contents/unlink emitem na falha vira texto em vez de @.
+     *
+     * @return array{0: mixed, 1: ?string}
+     */
+    function armazenamentoSemAviso(callable $operacao): array
+    {
+        $aviso = null;
+        set_error_handler(static function (int $nivel, string $mensagem) use (&$aviso): bool {
+            $aviso = $mensagem;
+
+            return true;
+        }, E_WARNING | E_NOTICE);
+        try {
+            return [$operacao(), $aviso];
+        } finally {
+            restore_error_handler();
+        }
+    }
+}
+
+if (! function_exists('armazenamentoRegistrarFalha')) {
+    /** Operações: mkdir, gravar, apagar. */
+    function armazenamentoRegistrarFalha(string $operacao, string $caminho, ?string $aviso): void
+    {
+        log_message('error', sprintf('armazenamento falha operacao=%s caminho=%s motivo=%s', $operacao, $caminho, $aviso ?? 'desconhecido'));
+    }
+}
+
+if (! function_exists('armazenamentoApagar')) {
+    function armazenamentoApagar(string $caminho): void
+    {
+        [$ok, $aviso] = armazenamentoSemAviso(static fn () => unlink($caminho));
+        if (! $ok) {
+            armazenamentoRegistrarFalha('apagar', $caminho, $aviso);
+        }
+    }
+}
+
+if (! function_exists('armazenamentoGravarProtecao')) {
+    /**
+     * Grava o .htaccess de proteção quando não existe ou quando o antigo não
+     * tem o bloco mod_authz_core (Apache 2.4). Um arquivo que já o contém não
+     * é tocado. Falha na gravação fica no log.
+     */
+    function armazenamentoGravarProtecao(string $arquivo, string $conteudo): void
+    {
+        if (is_file($arquivo) && str_contains((string) file_get_contents($arquivo), ARMAZENAMENTO_MARCA_AUTHZ)) {
+            return;
+        }
+
+        [$ok, $aviso] = armazenamentoSemAviso(static fn () => file_put_contents($arquivo, $conteudo));
+        if ($ok === false) {
+            armazenamentoRegistrarFalha('gravar', $arquivo, $aviso);
+        }
+    }
+}
+
 if (! function_exists('armazenamentoPasta')) {
     /**
      * Garante a pasta (relativa à raiz) e a protege: index.html e, na raiz,
@@ -122,14 +186,16 @@ if (! function_exists('armazenamentoPasta')) {
         $raiz = armazenamentoRaiz();
         $pasta = $raiz . ($relativo === '' ? '' : DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativo));
 
-        if (! is_dir($pasta) && ! @mkdir($pasta, 0750, true) && ! is_dir($pasta)) {
-            return null;
+        if (! is_dir($pasta)) {
+            [$criou, $aviso] = armazenamentoSemAviso(static fn () => mkdir($pasta, 0750, true));
+            if (! $criou && ! is_dir($pasta)) {
+                armazenamentoRegistrarFalha('mkdir', $pasta, $aviso);
+
+                return null;
+            }
         }
 
-        $negar = $raiz . DIRECTORY_SEPARATOR . '.htaccess';
-        if (! file_exists($negar)) {
-            @file_put_contents($negar, "# Os arquivos saem só pelo controller (docs/armazenamento-de-arquivos.md).\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder allow,deny\n\tDeny from all\n</IfModule>\n");
-        }
+        armazenamentoGravarProtecao($raiz . DIRECTORY_SEPARATOR . '.htaccess', "# Os arquivos saem só pelo controller (docs/armazenamento-de-arquivos.md).\n<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder allow,deny\n\tDeny from all\n</IfModule>\n");
 
         $caminhos = [$raiz];
         $acumulado = $raiz;
@@ -270,14 +336,14 @@ if (! function_exists('armazenamentoValidarEnvio')) {
 
         if (! armazenamentoMimePermitido($caminho, $extensao)) {
             if (is_file($caminho)) {
-                @unlink($caminho);
+                armazenamentoApagar($caminho);
             }
 
             return 'O conteúdo do arquivo não confere com a extensão.';
         }
 
         if (armazenamentoImagemGrandeDemais($caminho, $extensao)) {
-            @unlink($caminho);
+            armazenamentoApagar($caminho);
 
             return 'A imagem tem pixels demais (limite de ' . number_format(armazenamentoLimitePixels() / 1000000, 0, ',', '.') . ' megapixels). Reduza a resolução e envie de novo.';
         }
@@ -331,10 +397,7 @@ if (! function_exists('armazenamentoProtegerPastaPublica')) {
             protegerDiretorioUpload([$pasta]);
         }
 
-        $regras = $pasta . DIRECTORY_SEPARATOR . '.htaccess';
-        if (! file_exists($regras)) {
-            @file_put_contents($regras, "# Pasta de uploads: impede a execução de scripts enviados como imagem\n<FilesMatch \"\\.(?i:php[0-9]*|phtml|phar|pht|phps|cgi|pl|py|sh)\$\">\n    Order allow,deny\n    Deny from all\n</FilesMatch>\n");
-        }
+        armazenamentoGravarProtecao($pasta . DIRECTORY_SEPARATOR . '.htaccess', "# Pasta de uploads: impede a execução de scripts enviados como imagem\n<FilesMatch \"\\.(?i:php[0-9]*|phtml|phar|pht|phps|cgi|pl|py|sh)\$\">\n    <IfModule mod_authz_core.c>\n        Require all denied\n    </IfModule>\n    <IfModule !mod_authz_core.c>\n        Order allow,deny\n        Deny from all\n    </IfModule>\n</FilesMatch>\n");
     }
 }
 

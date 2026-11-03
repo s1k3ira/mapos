@@ -6,6 +6,17 @@ class Usuarios extends Seeder
 
     public function run()
     {
+        $this->executar(defined('ENVIRONMENT') ? ENVIRONMENT : 'production');
+    }
+
+    public function executar(string $ambiente): bool
+    {
+        if ($ambiente !== 'development') {
+            echo 'Seed Usuarios ignorado: só roda com ENVIRONMENT = development.' . PHP_EOL;
+
+            return false;
+        }
+
         echo 'Running Usuarios Seeder';
 
         //seed records manually
@@ -32,5 +43,7 @@ class Usuarios extends Seeder
         $this->db->insert($this->table, $data);
 
         echo PHP_EOL;
+
+        return true;
     }
 }

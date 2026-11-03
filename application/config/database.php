@@ -23,5 +23,5 @@ $db['default'] = [
     'compress' => false,
     'stricton' => false,
     'failover' => [],
-    'save_queries' => true,
+    'save_queries' => ENVIRONMENT !== 'production',
 ];

@@ -206,10 +206,25 @@ if (! function_exists('protegerDiretorioUpload')) {
     function protegerDiretorioUpload(array $diretorios)
     {
         foreach ($diretorios as $diretorio) {
+            $diretorio = (string) $diretorio;
             $index = rtrim($diretorio, '/\\') . DIRECTORY_SEPARATOR . 'index.html';
 
             if (is_dir($diretorio) && ! file_exists($index)) {
-                @file_put_contents($index, "<html>\n<head>\n\t<title>403 Forbidden</title>\n</head>\n<body>\n\n<p>Directory access is forbidden.</p>\n\n</body>\n</html>\n");
+                $aviso = null;
+                set_error_handler(static function (int $nivel, string $mensagem) use (&$aviso): bool {
+                    $aviso = $mensagem;
+
+                    return true;
+                }, E_WARNING | E_NOTICE);
+                try {
+                    $gravou = file_put_contents($index, "<html>\n<head>\n\t<title>403 Forbidden</title>\n</head>\n<body>\n\n<p>Directory access is forbidden.</p>\n\n</body>\n</html>\n");
+                } finally {
+                    restore_error_handler();
+                }
+
+                if ($gravou === false) {
+                    log_message('error', sprintf('armazenamento falha operacao=gravar caminho=%s motivo=%s', $index, $aviso ?? 'desconhecido'));
+                }
             }
         }
     }
