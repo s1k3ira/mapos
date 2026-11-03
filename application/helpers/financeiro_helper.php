@@ -537,3 +537,28 @@ if (! function_exists('cobrancaGatewayValido')) {
         return false;
     }
 }
+
+if (! function_exists('cobrancaRespostaDeFalha')) {
+    /**
+     * Status HTTP e mensagem segura para o usuário a partir de uma falha ao falar
+     * com o gateway. Só textos nossos: nunca a mensagem de exceção técnica.
+     *
+     * @return array{0: int, 1: string}
+     */
+    function cobrancaRespostaDeFalha(\Throwable $e, string $padrao): array
+    {
+        if ($e instanceof \Libraries\Gateways\Exceptions\GatewayRecusouException) {
+            return [422, $e->getMessage()];
+        }
+        if ($e instanceof \Libraries\Gateways\Exceptions\GatewayIndisponivelException) {
+            return [502, \Libraries\Gateways\Exceptions\GatewayIndisponivelException::MENSAGEM];
+        }
+        if (get_class($e) === \Exception::class) {
+            return [422, $e->getMessage()]; // validação local dos gateways/model, texto nosso
+        }
+
+        log_message('error', 'cobranca falha erro=' . $e::class);
+
+        return [500, $padrao];
+    }
+}

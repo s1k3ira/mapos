@@ -141,6 +141,31 @@ class Cobrancas_model extends CI_Model
         return false;
     }
 
+    /**
+     * Exclui a cobrança numa transação. False = nada mudou.
+     */
+    public function excluirEmTransacao(int $idCobranca): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->where('idCobranca', $idCobranca)->delete('cobrancas');
+
+            if ($this->db->affected_rows() === 1 && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // Com db_debug ligado o CI já desfez a transação antes de lançar; o rollback abaixo vira no-op.
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_cobranca id=%d', $idCobranca));
+
+        return false;
+    }
+
     public function count($table)
     {
         return $this->db->count_all($table);
