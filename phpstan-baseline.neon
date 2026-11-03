@@ -601,36 +601,6 @@ parameters:
 			path: application/libraries/MY_Email.php
 
 		-
-			message: '#^Call to an undefined method MY_Email\:\:bcc\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: application/libraries/MY_Email.php
-
-		-
-			message: '#^Call to an undefined method MY_Email\:\:cc\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: application/libraries/MY_Email.php
-
-		-
-			message: '#^Call to an undefined method MY_Email\:\:message\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: application/libraries/MY_Email.php
-
-		-
-			message: '#^Call to an undefined method MY_Email\:\:print_debugger\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: application/libraries/MY_Email.php
-
-		-
-			message: '#^Call to an undefined method MY_Email\:\:to\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: application/libraries/MY_Email.php
-
-		-
 			message: '#^Call to function is_array\(\) with array will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1

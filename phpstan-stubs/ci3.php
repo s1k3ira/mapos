@@ -240,6 +240,54 @@ class CI_Email
         return $this;
     }
 
+    /**
+     * @return static
+     */
+    public function to($to)
+    {
+        return $this;
+    }
+
+    /**
+     * @return static
+     */
+    public function cc($cc)
+    {
+        return $this;
+    }
+
+    /**
+     * @return static
+     */
+    public function bcc($bcc, $limit = '')
+    {
+        return $this;
+    }
+
+    /**
+     * @return static
+     */
+    public function message($body)
+    {
+        return $this;
+    }
+
+    /**
+     * @return static
+     */
+    public function clear($clear_attachments = false)
+    {
+        return $this;
+    }
+
+    /**
+     * @return string
+     */
+    public function print_debugger($include = ['headers', 'subject', 'body'])
+    {
+        return '';
+    }
+
     /** @var string */
     public $from;
 
