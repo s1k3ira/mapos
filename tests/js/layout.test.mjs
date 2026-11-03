@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { proximoEstado, CONSULTA_DESKTOP, ehAtalhoBusca, grupoDaSidebar } from '../../assets/js/modules/layout/shell.js';
+import { ErroHttp } from '../../assets/js/lib/http.js';
 import { aplicarModo, salvarModo, CHAVE_MODO } from '../../assets/js/lib/tema.js';
 
 test('no desktop o botão de menu recolhe e expande a sidebar', () => {
@@ -79,8 +80,9 @@ test('Ctrl+K e ⌘K levam à busca; com Shift, Alt ou outra tecla, não', () => 
 test('a troca de modo é gravada no servidor, e sem URL não faz nada nem quebra', async () => {
     const { gravarNoServidor } = await import('../../assets/js/modules/layout/shell.js');
 
-    assert.equal(await gravarNoServidor('', 'escuro'), false);
-    assert.equal(await gravarNoServidor(undefined, 'escuro'), false);
+    const semAviso = () => assert.fail('sem URL não avisa');
+    assert.equal(await gravarNoServidor('', 'escuro', semAviso), false);
+    assert.equal(await gravarNoServidor(undefined, 'escuro', semAviso), false);
 
     const original = globalThis.fetch;
     const documentoOriginal = globalThis.document;
@@ -90,7 +92,7 @@ test('a troca de modo é gravada no servidor, e sem URL não faz nada nem quebra
     globalThis.fetch = async (url, opcoes) => {
         chamadas.push({ url, corpo: String(opcoes.body) });
 
-        return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ result: true }) };
+        return { ok: true, headers: { get: () => 'application/json' }, text: async () => '{"result":true}' };
     };
     try {
         assert.equal(await gravarNoServidor('/index.php/mapos/salvarTemaModo', 'escuro'), true);
@@ -100,7 +102,9 @@ test('a troca de modo é gravada no servidor, e sem URL não faz nada nem quebra
         globalThis.fetch = async () => {
             throw new Error('sem rede');
         };
-        assert.equal(await gravarNoServidor('/x', 'claro'), false, 'Falha de rede não estoura: o localStorage já guardou.');
+        const avisos = [];
+        assert.equal(await gravarNoServidor('/x', 'claro', (o) => avisos.push(o)), false, 'Falha de rede não estoura.');
+        assert.deepEqual(avisos, [{ variante: 'danger', mensagem: 'Sem conexão ou a resposta demorou demais. Tente novamente.' }]);
     } finally {
         globalThis.fetch = original;
         globalThis.document = documentoOriginal;
@@ -117,4 +121,28 @@ test('só o <summary> de dentro da sidebar é um grupo dela (o menu do usuário 
     assert.equal(grupoDaSidebar(clique(resumoDoUsuario), sidebar), null);
     assert.equal(grupoDaSidebar(clique(null), sidebar), null);
     assert.equal(grupoDaSidebar(clique(resumoDoGrupo), null), null);
+});
+
+test('gravarNoServidor e gravarCorNoServidor avisam a mensagem do ErroHttp ou a padrão', async () => {
+    const { gravarNoServidor, gravarCorNoServidor } = await import('../../assets/js/modules/layout/shell.js');
+    const original = { fetch: globalThis.fetch, document: globalThis.document };
+    globalThis.document = { querySelector: () => null, querySelectorAll: () => [], cookie: '' };
+    const avisos = [];
+    const avisar = (o) => avisos.push(o);
+    try {
+        globalThis.fetch = async () => { throw new ErroHttp(0, 'Sem conexão ou a resposta demorou demais. Tente novamente.'); };
+        assert.equal(await gravarNoServidor('/u', 'escuro', avisar), false);
+
+        // Corpo ilegível: o erro não é ErroHttp, então vale a mensagem padrão.
+        globalThis.fetch = async () => ({ ok: true, headers: { get: () => 'text/plain' }, text: async () => { throw new Error('x'); } });
+        assert.equal(await gravarCorNoServidor('/c', 'azul', avisar), false);
+        assert.equal(await gravarCorNoServidor('', 'azul', avisar), false);
+    } finally {
+        globalThis.fetch = original.fetch;
+        globalThis.document = original.document;
+    }
+    assert.deepEqual(avisos, [
+        { variante: 'danger', mensagem: 'Sem conexão ou a resposta demorou demais. Tente novamente.' },
+        { variante: 'danger', mensagem: 'Não foi possível salvar a preferência no servidor.' },
+    ]);
 });

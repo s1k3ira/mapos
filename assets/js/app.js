@@ -7,6 +7,9 @@
 // Incluído no layout com <script type="module">, que só roda depois de o HTML
 // ser lido; o teste do readyState cobre os dois casos.
 
+import { ErroHttp } from './lib/http.js';
+import { mostrarToast } from './lib/toast.js';
+
 const NOME_VALIDO = /^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/;
 
 export function nomeDeModuloValido(nome) {
@@ -40,7 +43,20 @@ export async function iniciarModulos(raiz = document) {
     }));
 }
 
+export function tratarRejeicao(evento, avisar = (opcoes) => mostrarToast(opcoes)) {
+    console.error('[app] erro não tratado', evento?.reason);
+    avisar({
+        variante: 'danger',
+        mensagem: evento?.reason instanceof ErroHttp ? evento.reason.message : 'Algo deu errado. Tente novamente.',
+    });
+}
+
+export function registrarTratadorGlobal(alvo = globalThis) {
+    alvo.addEventListener('unhandledrejection', (evento) => tratarRejeicao(evento));
+}
+
 if (typeof document !== 'undefined') {
+    registrarTratadorGlobal();
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => iniciarModulos());
     } else {

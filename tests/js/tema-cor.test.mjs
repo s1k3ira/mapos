@@ -10,7 +10,7 @@ function htmlFalso() {
     return { dataset: {}, classList: { toggle() {}, contains: () => false } };
 }
 
-const respostaJson = { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ result: true }) };
+const respostaJson = { ok: true, headers: { get: () => 'application/json' }, text: async () => '{"result":true}' };
 
 test('aplicarCor troca o data-tema do <html> e o padrão (laranja) remove o atributo', () => {
     const html = htmlFalso();
@@ -66,7 +66,7 @@ test('a troca de cor é gravada no servidor; sem URL ou com falha não quebra', 
         globalThis.fetch = async () => {
             throw new Error('sem rede');
         };
-        assert.equal(await gravarCorNoServidor('/x', 'azul'), false, 'Falha de rede não estoura: o cache já guardou.');
+        assert.equal(await gravarCorNoServidor('/x', 'azul', () => {}), false, 'Falha de rede não estoura: o cache já guardou.');
     } finally {
         globalThis.fetch = original.fetch;
         globalThis.document = original.document;
@@ -117,7 +117,7 @@ function ambienteDoPainel(html, chamadas, gravado) {
     };
 }
 
-test('clicar numa amostra troca a cor na hora, marca aria-pressed e grava no servidor', () => {
+test('clicar numa amostra troca a cor na hora, marca aria-pressed e grava no servidor', async () => {
     const { html, botoes, corpo, clicar } = painelFalso('/index.php/mapos/salvarTemaCor');
     const chamadas = [];
     const gravado = {};
@@ -142,12 +142,14 @@ test('clicar numa amostra troca a cor na hora, marca aria-pressed e grava no ser
 
         clicar(botoes[0]);
         assert.equal(html.dataset.tema, undefined, 'O padrão tira o atributo.');
+        // Deixa a gravação no servidor terminar antes de restaurar o ambiente.
+        await new Promise((resolve) => setImmediate(resolve));
     } finally {
         restaurar();
     }
 });
 
-test('sem a URL no <body> a troca de cor vale na tela e não quebra', () => {
+test('sem a URL no <body> a troca de cor vale na tela e não quebra', async () => {
     const { html, botoes, corpo, clicar } = painelFalso(null);
     const chamadas = [];
     const restaurar = ambienteDoPainel(html, chamadas, {});
