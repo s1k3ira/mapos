@@ -77,6 +77,39 @@ class GerencianetSdk extends BasePaymentGateway
         });
     }
 
+    /**
+     * Reconsulta no provedor a cobrança de uma notificação (webhook): o status vem do detailCharge.
+     *
+     * @return array{charge_id: string, status: string, valor_centavos: int}
+     *
+     * @throws GatewayRecusouException|GatewayIndisponivelException
+     */
+    public function consultarPagamento(string $idExterno): array
+    {
+        $notificacao = $this->chamarEfi('consultar_webhook', null, fn () => $this->gerenciaNetApi->getNotification(['token' => $idExterno]));
+
+        $chargeId = null;
+        foreach (array_reverse((array) ($notificacao['data'] ?? [])) as $item) {
+            $id = $item['identifiers']['charge_id'] ?? null;
+            if ($id !== null && $id !== '') {
+                $chargeId = $id;
+                break;
+            }
+        }
+        if ($chargeId === null) {
+            throw new GatewayRecusouException('Notificação da Efí sem cobrança.');
+        }
+
+        $cobranca = $this->chamarEfi('consultar_webhook', null, fn () => $this->gerenciaNetApi->detailCharge(['id' => $chargeId], []));
+        $dados = $cobranca['data'] ?? [];
+
+        return [
+            'charge_id' => (string) ($dados['charge_id'] ?? $chargeId),
+            'status' => (string) ($dados['status'] ?? ''),
+            'valor_centavos' => (int) ($dados['total'] ?? 0),
+        ];
+    }
+
     private function descricaoDaCobranca($id, string $tipo): string
     {
         return $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";

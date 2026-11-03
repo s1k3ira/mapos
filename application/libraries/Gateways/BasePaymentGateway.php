@@ -11,6 +11,18 @@ abstract class BasePaymentGateway implements PaymentGateway
     /** @var object Instância do CodeIgniter, injetada por get_instance() no construtor dos gateways */
     protected $ci;
 
+    /** Status de pagamento confirmado em cada provedor (comparação exata: o provedor define a caixa). */
+    public const STATUS_PAGOS = [
+        'GerencianetSdk' => ['paid', 'settled'],
+        'MercadoPago' => ['approved'],
+        'Asaas' => ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'DUNNING_RECEIVED'],
+    ];
+
+    public static function statusPago(string $gateway, string $status): bool
+    {
+        return in_array($status, self::STATUS_PAGOS[$gateway] ?? [], true);
+    }
+
     /**
      * Existe só para satisfazer o PHPStan.
      *

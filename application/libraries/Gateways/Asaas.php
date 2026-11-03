@@ -73,6 +73,24 @@ class Asaas extends BasePaymentGateway
         return $this->chamarGateway($operacao, $idCobranca, fn () => $this->conferirResposta($chamada(), $operacao));
     }
 
+    /**
+     * Reconsulta o pagamento no provedor (webhook): só o retorno da consulta é confiável.
+     *
+     * @return array{charge_id: string, status: string, valor_centavos: int}
+     *
+     * @throws GatewayRecusouException|GatewayIndisponivelException
+     */
+    public function consultarPagamento(string $idExterno): array
+    {
+        $r = $this->chamarAsaas('consultar_webhook', null, fn () => $this->asaasApi->Cobranca()->getById($idExterno));
+
+        return [
+            'charge_id' => (string) $r->id,
+            'status' => (string) $r->status,
+            'valor_centavos' => (int) round(((float) $r->value) * 100),
+        ];
+    }
+
     private function descricaoDaCobranca($id, string $tipo): string
     {
         return $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";

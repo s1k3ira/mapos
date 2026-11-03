@@ -57,6 +57,33 @@ class MercadoPago extends BasePaymentGateway
         return new GatewayIndisponivelException(GatewayIndisponivelException::MENSAGEM, $e);
     }
 
+    /**
+     * Reconsulta o pagamento no provedor (webhook): só o retorno da consulta é confiável.
+     *
+     * @return array{charge_id: string, status: string, valor_centavos: int}
+     *
+     * @throws GatewayRecusouException|GatewayIndisponivelException
+     */
+    public function consultarPagamento(string $idExterno): array
+    {
+        if (! ctype_digit($idExterno)) {
+            throw new GatewayRecusouException('Pagamento não encontrado no Mercado Pago.');
+        }
+
+        $pagamento = $this->chamarGateway('consultar_webhook', null, fn () => $this->buscarPagamentoMp((int) $idExterno));
+
+        return [
+            'charge_id' => (string) $pagamento->id,
+            'status' => (string) $pagamento->status,
+            'valor_centavos' => (int) round(((float) $pagamento->transaction_amount) * 100),
+        ];
+    }
+
+    protected function buscarPagamentoMp(int $id): object
+    {
+        return (new PaymentClient())->get($id);
+    }
+
     public function cancelar($id)
     {
         $cobranca = $this->ci->cobrancas_model->getById($id);
