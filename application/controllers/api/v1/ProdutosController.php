@@ -16,22 +16,14 @@ class ProdutosController extends REST_Controller
 
     public function index_get($id = '')
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'vProduto')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Produtos',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('vProduto', 'Você não está autorizado a Visualizar Produtos');
 
         if (! $id) {
             $search = trim((string) $this->get('search', true));
 
-            $perPage = $this->get('perPage', true) ?: 20;
-            $page = $this->get('page', true) ?: 0;
-            $start = $page ? ($perPage * $page) : 0;
+            [$limite, $offset] = $this->paginacaoDaApi();
 
-            $produtos = $this->produtos_model->get('produtos', '*', $search, $perPage, $start);
+            $produtos = $this->produtos_model->get('produtos', '*', $search, $limite, $offset);
 
             $this->response([
                 'status' => true,
@@ -59,13 +51,7 @@ class ProdutosController extends REST_Controller
 
     public function index_post()
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'aProduto')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Adicionar Produtos!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('aProduto', 'Você não está autorizado a Adicionar Produtos!');
 
         $_POST = (array) json_decode(file_get_contents('php://input'), true);
 
@@ -78,27 +64,13 @@ class ProdutosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $precoCompra = $this->post('precoCompra', true);
-        $precoCompra = str_replace(',', '', $precoCompra);
-        $precoVenda = $this->post('precoVenda', true);
-        $precoVenda = str_replace(',', '', $precoVenda);
-        $data = [
-            'codDeBarra' => $this->post('codDeBarra', true),
-            'descricao' => $this->post('descricao', true),
-            'unidade' => $this->post('unidade', true),
-            'precoCompra' => $precoCompra,
-            'precoVenda' => $precoVenda,
-            'estoque' => $this->post('estoque', true),
-            'estoqueMinimo' => $this->post('estoqueMinimo', true) ? $this->post('estoqueMinimo', true) : 0,
-            'saida' => $this->post('saida', true) ? $this->post('saida', true) : 0,
-            'entrada' => $this->post('entrada', true) ? $this->post('entrada', true) : 0,
-        ];
+        $data = $this->dadosDoProduto(fn (string $campo) => $this->post($campo, true));
 
         if ($this->produtos_model->add('produtos', $data)) {
             $this->response([
                 'status' => true,
                 'message' => 'Produto adicionado com sucesso!',
-                'result' => $this->produtos_model->get('produtos', '*', "descricao = '{$data['descricao']}'", 1, 0, true),
+                'result' => $this->produtos_model->getById((int) $this->db->insert_id()),
             ], REST_Controller::HTTP_CREATED);
         }
 
@@ -110,14 +82,7 @@ class ProdutosController extends REST_Controller
 
     public function index_put($id)
     {
-        $this->logged_user();
-
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eProduto')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar Produtos!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eProduto', 'Você não está autorizado a Editar Produtos!');
 
         if (! $id) {
             $this->response([
@@ -137,21 +102,7 @@ class ProdutosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $precoCompra = $this->put('precoCompra', true);
-        $precoCompra = str_replace(',', '', $precoCompra);
-        $precoVenda = $this->put('precoVenda', true);
-        $precoVenda = str_replace(',', '', $precoVenda);
-        $data = [
-            'codDeBarra' => $this->put('codDeBarra', true) ?: 0,
-            'descricao' => $this->put('descricao', true),
-            'unidade' => $this->put('unidade', true),
-            'precoCompra' => $precoCompra,
-            'precoVenda' => $precoVenda,
-            'estoque' => $this->put('estoque', true),
-            'estoqueMinimo' => $this->put('estoqueMinimo', true) ?: 0,
-            'saida' => $this->put('saida', true) ?: 0,
-            'entrada' => $this->put('entrada', true) ?: 0
-        ];
+        $data = $this->dadosDoProduto(fn (string $campo) => $this->put($campo, true));
 
         if ($this->produtos_model->edit('produtos', $data, 'idProdutos', $id)) {
             $this->response([
@@ -169,13 +120,7 @@ class ProdutosController extends REST_Controller
 
     public function index_delete($id)
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'dProduto')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Apagar Produtos!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('dProduto', 'Você não está autorizado a Apagar Produtos!');
 
         if (! $id) {
             $this->response([
@@ -184,10 +129,22 @@ class ProdutosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $this->produtos_model->delete('produtos_os', 'produtos_id', $id);
-        $this->produtos_model->delete('itens_de_vendas', 'produtos_id', $id);
+        $id = (int) $id;
+        if ($id <= 0) {
+            $this->response([
+                'status' => false,
+                'message' => 'Informe o ID do Produto!',
+            ], REST_Controller::HTTP_BAD_REQUEST);
+        }
 
-        if ($this->produtos_model->delete('produtos', 'idProdutos', $id)) {
+        if (! $this->produtos_model->getById($id)) {
+            $this->response([
+                'status' => false,
+                'message' => 'Produto não encontrado.',
+            ], REST_Controller::HTTP_NOT_FOUND);
+        }
+
+        if ($this->produtos_model->excluirComDependentes($id)) {
             $this->log_app('Removeu um Produto. ID' . $id);
             $this->response([
                 'status' => true,
@@ -197,7 +154,29 @@ class ProdutosController extends REST_Controller
 
         $this->response([
             'status' => false,
-            'message' => 'Não foi possível excluir o Produto. Avise ao Administrador.',
+            'message' => 'Não foi possível excluir. Nada foi alterado.',
         ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Allow-list de colunas do produto, igual no POST e no PUT: o id e o que
+     * mais vier no corpo nunca chegam ao banco. $campo lê o corpo da requisição.
+     *
+     * @param  callable(string): mixed  $campo
+     * @return array<string, mixed>
+     */
+    private function dadosDoProduto(callable $campo): array
+    {
+        return [
+            'codDeBarra' => $campo('codDeBarra') ?: 0,
+            'descricao' => $campo('descricao'),
+            'unidade' => $campo('unidade'),
+            'precoCompra' => str_replace(',', '', (string) ($campo('precoCompra') ?? '')),
+            'precoVenda' => str_replace(',', '', (string) ($campo('precoVenda') ?? '')),
+            'estoque' => $campo('estoque'),
+            'estoqueMinimo' => $campo('estoqueMinimo') ?: 0,
+            'saida' => $campo('saida') ?: 0,
+            'entrada' => $campo('entrada') ?: 0,
+        ];
     }
 }

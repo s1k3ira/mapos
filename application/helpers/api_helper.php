@@ -64,7 +64,7 @@ if (! function_exists('usuarioApiPlanoEdicao')) {
             return $erro(400, 'Informe o ID do Usuário!');
         }
         if (! $proprio && ! $podeGerir) {
-            return $erro(401, 'Você não está autorizado a Editar Usuários!');
+            return $erro(403, 'Você não está autorizado a Editar Usuários!');
         }
         if (! $proprio) {
             $motivo = usuarioPodeSerEditadoPor($idAlvo, $idLogado);

@@ -76,7 +76,7 @@ final class ApiSegurancaTest extends MaposTestCase
         $plano = usuarioApiPlanoEdicao($this->usuarios(), 2, 3, false, $this->corpo(['permissoes_id' => '1', 'situacao' => '1']), fn () => true);
 
         $this->assertFalse($plano['ok']);
-        $this->assertSame(401, $plano['status']);
+        $this->assertSame(403, $plano['status']);
     }
 
     public function testComCUsuarioMudaGrupoSituacaoEExpiracaoDeOutro(): void
