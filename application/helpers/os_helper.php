@@ -813,3 +813,73 @@ if (! function_exists('osVencimentoGarantia')) {
         return date('Y-m-d', strtotime($base . ' +' . $dias . ' days'));
     }
 }
+
+if (! function_exists('osDadosDaApi')) {
+    /**
+     * Dados da OS vindos do corpo da API, por allow-list: só os campos abaixo
+     * são lidos (faturado, valorTotal, lancamento, idOs e descontos nunca vêm do
+     * corpo). Datas em dd/mm/aaaa viram Y-m-d; dataFinal vazia vale hoje; status
+     * "Faturado" só pelo faturamento do painel. Criar ($novo) grava faturado 0;
+     * editar não leva a chave faturado.
+     *
+     * @param  array<string, mixed>  $corpo
+     * @return array{ok: bool, erros: array<string, string>, dados: array<string, mixed>}
+     */
+    function osDadosDaApi(array $corpo, bool $novo): array
+    {
+        if (! function_exists('apiDataValida')) {
+            require_once APPPATH . 'helpers/api_helper.php'; // @phpstan-ignore requireOnce.fileNotFound
+        }
+        if (! defined('OS_STATUS_VARIANTES')) {
+            require_once APPPATH . 'helpers/status_helper.php'; // @phpstan-ignore requireOnce.fileNotFound
+        }
+
+        $texto = static fn (string $campo): string => is_scalar($corpo[$campo] ?? null) ? (string) $corpo[$campo] : '';
+        $valor = static fn (string $campo): mixed => is_scalar($corpo[$campo] ?? null) ? $corpo[$campo] : null;
+        $formatoInvalido = 'Informe a data no formato dd/mm/aaaa.';
+        $erros = [];
+
+        $dataInicial = apiDataValida($texto('dataInicial'), 'd/m/Y');
+        if ($dataInicial === null) {
+            $erros['dataInicial'] = $formatoInvalido;
+        }
+
+        $dataFinal = date('Y-m-d');
+        if ($texto('dataFinal') !== '') {
+            $dataFinal = apiDataValida($texto('dataFinal'), 'd/m/Y');
+            if ($dataFinal === null) {
+                $erros['dataFinal'] = $formatoInvalido;
+            }
+        }
+
+        $status = $texto('status');
+        if ($status === 'Faturado') {
+            $erros['status'] = 'Para faturar a OS, use o faturamento no painel.';
+        } elseif ($status !== '' && ! array_key_exists($status, OS_STATUS_VARIANTES)) {
+            $erros['status'] = 'Status inválido.';
+        }
+
+        // O campo legado termoGarantia só liga ou desliga o termo; quem o define é garantias_id.
+        $garantiasId = filter_var($texto('garantias_id'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $comTermo = ! in_array($texto('termoGarantia'), ['', '0'], true);
+
+        $dados = [
+            'dataInicial' => $dataInicial,
+            'clientes_id' => $valor('clientes_id'),
+            'usuarios_id' => $valor('usuarios_id'),
+            'dataFinal' => $dataFinal,
+            'garantia' => $texto('garantia'),
+            'garantias_id' => $comTermo && $garantiasId !== false ? $garantiasId : null,
+            'descricaoProduto' => $texto('descricaoProduto'),
+            'defeito' => $texto('defeito'),
+            'status' => $status,
+            'observacoes' => $texto('observacoes'),
+            'laudoTecnico' => $texto('laudoTecnico'),
+        ];
+        if ($novo) {
+            $dados['faturado'] = 0;
+        }
+
+        return ['ok' => $erros === [], 'erros' => $erros, 'dados' => $dados];
+    }
+}

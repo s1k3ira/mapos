@@ -11,19 +11,13 @@ class OsController extends REST_Controller
         parent::__construct();
 
         $this->load->model('os_model');
-        $this->load->model('Api_model');
-        $this->load->helper(['os', 'api']);
+        $this->load->helper(['os', 'api', 'armazenamento']);
     }
 
     public function index_get($id = '')
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'vOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Ordens de Serviços',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('vOs', 'Você não está autorizado a Visualizar Ordens de Serviços');
 
         $where_array = [];
 
@@ -38,23 +32,9 @@ class OsController extends REST_Controller
         if ($status) {
             $where_array['status'] = $status;
         }
-        if ($de) {
-            $de = explode('/', $de);
-            $de = $de[2] . '-' . $de[1] . '-' . $de[0];
-
-            $where_array['de'] = $de;
-        }
-        if ($ate) {
-            $ate = explode('/', $ate);
-            $ate = $ate[2] . '-' . $ate[1] . '-' . $ate[0];
-
-            $where_array['ate'] = $ate;
-        }
-
         if (! $id) {
-            $perPage = $this->get('perPage', true) ?: 20;
-            $page = $this->get('page', true) ? ($this->get('page', true) * $perPage) : 0;
-            $start = $page ? ($perPage * $page) : 0;
+            $this->filtroDeDatas($de, $ate, $where_array);
+            [$limite, $offset] = $this->paginacaoDaApi();
 
             // Com o desconto individual dos itens (#2880), o valor do item é o subTotal gravado.
             $valorProduto = 'produtos_os.preco * produtos_os.quantidade';
@@ -70,8 +50,8 @@ class OsController extends REST_Controller
                 COALESCE((SELECT SUM({$valorProduto}) FROM produtos_os WHERE produtos_os.os_id = os.idOs), 0) totalProdutos,
                 COALESCE((SELECT SUM({$valorServico}) FROM servicos_os WHERE servicos_os.os_id = os.idOs), 0) totalServicos",
                 $where_array,
-                $perPage,
-                $page
+                $limite,
+                $offset
             );
 
             $this->response([
@@ -116,12 +96,7 @@ class OsController extends REST_Controller
     public function index_post()
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'aOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Adicionar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('aOs', 'Você não está autorizado a Adicionar OS!');
 
         $_POST = (array) json_decode(file_get_contents('php://input'), true);
 
@@ -134,41 +109,11 @@ class OsController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $dataInicial = $this->post('dataInicial', true);
-        $dataFinal = $this->post('dataFinal', true);
-        $termoGarantiaId = $this->post('termoGarantia', true);
-
-        try {
-            $dataInicial = explode('/', $dataInicial);
-            $dataInicial = $dataInicial[2] . '-' . $dataInicial[1] . '-' . $dataInicial[0];
-
-            if ($dataFinal) {
-                $dataFinal = explode('/', $dataFinal);
-                $dataFinal = $dataFinal[2] . '-' . $dataFinal[1] . '-' . $dataFinal[0];
-            } else {
-                $dataFinal = date('Y/m/d');
-            }
-
-            $termoGarantiaId = (! $termoGarantiaId == null || ! $termoGarantiaId == '') ? $this->post('garantias_id', true) : null;
-        } catch (Exception $e) {
-            $dataInicial = date('Y/m/d');
-            $dataFinal = date('Y/m/d');
+        $dados = osDadosDaApi($this->corpoDaApi('post'), true);
+        if (! $dados['ok']) {
+            $this->dadosInvalidos($dados['erros']);
         }
-
-        $data = [
-            'dataInicial' => $dataInicial,
-            'clientes_id' => $this->post('clientes_id', true),
-            'usuarios_id' => $this->post('usuarios_id', true),
-            'dataFinal' => $dataFinal,
-            'garantia' => $this->post('garantia', true),
-            'garantias_id' => $termoGarantiaId,
-            'descricaoProduto' => $this->post('descricaoProduto', true),
-            'defeito' => $this->post('defeito', true),
-            'status' => $this->post('status', true),
-            'observacoes' => $this->post('observacoes', true),
-            'laudoTecnico' => $this->post('laudoTecnico', true),
-            'faturado' => 0,
-        ];
+        $data = $dados['dados'];
 
         if (is_numeric($id = $this->os_model->add('os', $data, true))) {
             $this->load->model('mapos_model');
@@ -222,76 +167,29 @@ class OsController extends REST_Controller
     public function index_put($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Adicionar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Adicionar OS!');
 
-        $os = $this->os_model->getById($id);
+        $os = $this->osParaEditar($id, 'OS Faturada/Cancelada não pode ser alterada.', 'OS não encontrada.');
 
-        if (! $os) {
-            $this->response([
-                'status' => false,
-                'message' => 'Essa OS não existe',
-            ], REST_Controller::HTTP_BAD_REQUEST);
-        }
-
-        $_POST = (array) json_decode(file_get_contents('php://input'), true);
-
-        if (! isset($_POST['dataInicial']) ||
-           ! isset($_POST['dataFinal']) ||
-           ! isset($_POST['status']) ||
-           ! isset($_POST['clientes_id']) ||
-           ! isset($_POST['usuarios_id'])
-        ) {
+        $corpo = $this->corpoDaApi('put');
+        if (! isset($corpo['dataInicial'], $corpo['status'], $corpo['clientes_id'], $corpo['usuarios_id'])) {
             $this->response([
                 'status' => false,
                 'message' => 'Preencha os campos obrigatórios',
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $dataInicial = $this->put('dataInicial', true);
-        $dataFinal = $this->put('dataFinal', true);
-        $termoGarantiaId = $this->put('termoGarantia', true);
-
-        try {
-            $dataInicial = explode('/', $dataInicial);
-            $dataInicial = $dataInicial[2] . '-' . $dataInicial[1] . '-' . $dataInicial[0];
-
-            if ($dataFinal) {
-                $dataFinal = explode('/', $dataFinal);
-                $dataFinal = $dataFinal[2] . '-' . $dataFinal[1] . '-' . $dataFinal[0];
-            } else {
-                $dataFinal = date('Y/m/d');
-            }
-
-            $termoGarantiaId = (! $termoGarantiaId == null || ! $termoGarantiaId == '') ? $this->put('garantias_id') : null;
-        } catch (Exception $e) {
-            $dataInicial = date('Y/m/d');
-            $dataFinal = date('Y/m/d');
+        $dados = osDadosDaApi($corpo, false);
+        if (! $dados['ok']) {
+            $this->dadosInvalidos($dados['erros']);
         }
+        $data = $dados['dados'];
 
-        $data = [
-            'dataInicial' => $dataInicial,
-            'clientes_id' => $this->put('clientes_id', true),
-            'usuarios_id' => $this->put('usuarios_id', true),
-            'dataFinal' => $dataFinal,
-            'garantia' => $this->put('garantia', true),
-            'garantias_id' => $termoGarantiaId,
-            'descricaoProduto' => $this->put('descricaoProduto', true),
-            'defeito' => $this->put('defeito', true),
-            'status' => $this->put('status', true),
-            'observacoes' => $this->put('observacoes', true),
-            'laudoTecnico' => $this->put('laudoTecnico', true),
-            'faturado' => 0,
-        ];
-
-        if (strtolower($this->put('status')) == 'cancelado' && strtolower($os->status) != 'cancelado') {
+        $statusNovo = strtolower((string) $data['status']);
+        if ($statusNovo === 'cancelado' && strtolower((string) $os->status) !== 'cancelado') {
             $this->devolucaoEstoque($id);
         }
-        if (strtolower($os->status) == 'cancelado' && strtolower($this->put('status')) != 'cancelado') {
+        if (strtolower((string) $os->status) === 'cancelado' && $statusNovo !== 'cancelado') {
             $this->debitarEstoque($id);
         }
 
@@ -347,12 +245,7 @@ class OsController extends REST_Controller
     public function index_delete($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'dOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Apagar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('dOs', 'Você não está autorizado a Apagar OS!');
 
         if (! $id) {
             $this->response([
@@ -372,54 +265,59 @@ class OsController extends REST_Controller
             }
         }
 
-        if (isset($os->idCobranca) != null) {
-            if ($os->status == 'canceled') {
-                $this->os_model->delete('cobrancas', 'os_id', $id);
-            } else {
-                $this->response([
-                    'status' => false,
-                    'message' => 'Existe uma cobrança associada a esta OS, deve cancelar e/ou excluir a cobrança primeiro!',
-                ], REST_Controller::HTTP_BAD_REQUEST);
-            }
-        }
-
-        $osStockRefund = $this->os_model->getById($id);
-        //Verifica para poder fazer a devolução do produto para o estoque caso OS seja excluida.
-        if (strtolower($osStockRefund->status) != 'cancelado') {
-            $this->devolucaoEstoque($id);
-        }
-
-        $this->os_model->delete('servicos_os', 'os_id', $id);
-        $this->os_model->delete('produtos_os', 'os_id', $id);
-        $this->os_model->delete('anexos', 'os_id', $id);
-
-        if ((int) $os->faturado === 1) {
-            $this->os_model->delete('lancamentos', 'descricao', "Fatura de OS - #{$id}");
-        }
-
-        if ($this->os_model->delete('os', 'idOs', $id)) {
-            $this->log_app('Removeu uma OS ID' . $id);
+        if (isset($os->idCobranca) && $os->status != 'canceled') {
             $this->response([
-                'status' => true,
-                'message' => 'OS excluída com sucesso!',
-            ], REST_Controller::HTTP_OK);
+                'status' => false,
+                'message' => 'Existe uma cobrança associada a esta OS, deve cancelar e/ou excluir a cobrança primeiro!',
+            ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
+        // Com cobrança, getByIdCobrancas() traz o status da cobrança no lugar do da OS.
+        $osAtual = $this->os_model->getById($id);
+        $faturada = (int) $osAtual->faturado === 1;
+        $lancamento = isset($osAtual->lancamento) ? (int) $osAtual->lancamento : null;
+
+        if ($faturada && $this->os_model->faturaBaixada((int) $id, $lancamento)) {
+            $this->response([
+                'status' => false,
+                'message' => 'A fatura desta OS já tem pagamento baixado: estorne o recebimento antes de excluir a OS.',
+            ], REST_Controller::HTTP_BAD_REQUEST);
+        }
+
+        // Os arquivos dos anexos saem do disco só depois do commit.
+        $arquivos = osArquivosDosAnexos($this->os_model->getAnexos($id), FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'anexos');
+
+        // A devolução do estoque roda na transação, salvo se o cancelamento já devolveu.
+        $excluiu = $this->os_model->excluirComDependentes(
+            (int) $id,
+            isset($os->idCobranca),
+            $lancamento,
+            $faturada,
+            strtolower((string) $osAtual->status) !== 'cancelado' ? fn () => $this->devolucaoEstoque($id) : null
+        );
+
+        if (! $excluiu) {
+            $this->response([
+                'status' => false,
+                'message' => 'Não foi possível excluir. Nada foi alterado.',
+            ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        foreach ($arquivos as $arquivo) {
+            armazenamentoApagar($arquivo);
+        }
+
+        $this->log_app('Removeu uma OS ID' . $id);
         $this->response([
-            'status' => false,
-            'message' => 'Não foi possível excluir a OS Avise ao Administrador.',
-        ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+            'status' => true,
+            'message' => 'OS excluída com sucesso!',
+        ], REST_Controller::HTTP_OK);
     }
 
     public function desconto_post($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $os = $this->osParaEditar($id, 'Desconto não pode ser adicionado. OS Faturada/Cancelada');
 
@@ -462,12 +360,7 @@ class OsController extends REST_Controller
     public function produtos_post($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $_POST = (array) json_decode(trim(file_get_contents('php://input')));
         $_POST['idOsProduto'] = $id;
@@ -500,7 +393,7 @@ class OsController extends REST_Controller
         ];
 
         if ($this->os_model->add('produtos_os', $data)) {
-            $lastProdutoOs = $this->Api_model->lastRow('produtos_os', 'idProdutos_os');
+            $idInserido = (int) $this->db->insert_id();
 
             $this->load->model('produtos_model');
 
@@ -514,7 +407,7 @@ class OsController extends REST_Controller
 
             $this->log_app('Adicionou produto a uma OS. ID (OS): ' . $id);
 
-            $result = $lastProdutoOs;
+            $result = $this->os_model->getProdutoDaOs((int) $id, $idInserido);
             unset($result->descricao);
             $result->produto = $this->produtos_model->getById($this->post('idProduto', true));
 
@@ -534,12 +427,7 @@ class OsController extends REST_Controller
     public function produtos_put($id, $idProdutos_os)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         if (! $id || ! $idProdutos_os) {
             $this->response([
@@ -601,12 +489,7 @@ class OsController extends REST_Controller
     public function produtos_delete($id, $idProdutos_os)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $this->osParaEditar($id, 'OS Faturada/Cancelada não pode ser alterada.', 'Não foi possível excluir o Produto da OS.');
 
@@ -645,12 +528,7 @@ class OsController extends REST_Controller
     public function servicos_post($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $_POST = (array) json_decode(trim(file_get_contents('php://input')));
         $_POST['idOsServico'] = $id;
@@ -683,7 +561,7 @@ class OsController extends REST_Controller
         ];
 
         if ($this->os_model->add('servicos_os', $data)) {
-            $lastServicoOs = $this->Api_model->lastRow('servicos_os', 'idServicos_os');
+            $idInserido = (int) $this->db->insert_id();
 
             $this->load->model('servicos_model');
 
@@ -695,7 +573,7 @@ class OsController extends REST_Controller
 
             $this->log_app('Adicionou serviço a uma OS. ID (OS): ' . $id);
 
-            $result = $lastServicoOs;
+            $result = $this->os_model->getServicoDaOs((int) $id, $idInserido);
             unset($result->servico);
             $result->servico = $this->servicos_model->getById($this->post('idServico', true));
 
@@ -715,12 +593,7 @@ class OsController extends REST_Controller
     public function servicos_put($id, $idServicos_os)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         if (! $id || ! $idServicos_os) {
             $this->response([
@@ -775,12 +648,7 @@ class OsController extends REST_Controller
     public function servicos_delete($id, $idServicos_os)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $this->osParaEditar($id, 'OS Faturada/Cancelada não pode ser alterada.', 'Não foi possível excluir o Serviço da OS.');
 
@@ -814,12 +682,7 @@ class OsController extends REST_Controller
     public function anotacoes_post($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $_POST = (array) json_decode(trim(file_get_contents('php://input')));
         $_POST['os_id'] = $id;
@@ -842,11 +705,11 @@ class OsController extends REST_Controller
         ];
 
         if ($this->os_model->add('anotacoes_os', $data)) {
-            $lastAnotacao = $this->Api_model->lastRow('anotacoes_os', 'idAnotacoes');
+            $idInserido = (int) $this->db->insert_id();
             $this->log_app('Adicionou anotação a uma OS. ID (OS): ' . $id);
 
             $result = [
-                'idAnotacoes' => $lastAnotacao->idAnotacoes,
+                'idAnotacoes' => $idInserido,
                 'anotacao' => $this->post('anotacao', true),
             ];
 
@@ -866,12 +729,7 @@ class OsController extends REST_Controller
     public function anotacoes_delete($id, $idAnotacao)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         $this->osParaEditar($id, 'OS Faturada/Cancelada não pode ser alterada.');
 
@@ -900,12 +758,7 @@ class OsController extends REST_Controller
     /** Arquivo (ou miniatura com ?miniatura=1) de um anexo da OS, servido de STORAGE_PATH. */
     public function anexos_get($id, $idAnexo = null)
     {
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'vOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Ordens de Serviços',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('vOs', 'Você não está autorizado a Visualizar Ordens de Serviços');
 
         $anexo = is_numeric($idAnexo) ? $this->os_model->getAnexoDaOs((int) $id, (int) $idAnexo) : null;
         $arquivo = $anexo ? armazenamentoArquivoDoAnexo($anexo, $this->get('miniatura') !== null) : null;
@@ -923,12 +776,7 @@ class OsController extends REST_Controller
     public function anexos_post($id)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         if (! is_numeric($id) || ! $this->os_model->getById((int) $id)) {
             $this->response([
@@ -1029,17 +877,12 @@ class OsController extends REST_Controller
     public function anexos_delete($id, $idAnexo)
     {
         $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar OS!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eOs', 'Você não está autorizado a Editar OS!');
 
         if (is_numeric($id) && is_numeric($idAnexo) && ($file = $this->os_model->getAnexoDaOs((int) $id, (int) $idAnexo))) {
             // Só apaga o que está dentro de STORAGE_PATH (ou da pasta antiga de anexos).
             foreach (osArquivosDosAnexos([$file], FCPATH . 'assets' . DIRECTORY_SEPARATOR . 'anexos') as $arquivo) {
-                @unlink($arquivo);
+                armazenamentoApagar($arquivo);
             }
 
             if ($this->os_model->delete('anexos', 'idAnexos', (int) $idAnexo)) {
@@ -1056,6 +899,74 @@ class OsController extends REST_Controller
             'status' => false,
             'message' => 'Erro ao tentar excluir anexo.',
         ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Corpo JSON de POST/PUT, campo a campo pelo leitor da API (com xss_clean).
+     *
+     * @return array<string, mixed>
+     */
+    private function corpoDaApi(string $metodo): array
+    {
+        $corpo = [];
+        foreach (array_keys((array) ($this->$metodo() ?? [])) as $campo) {
+            $corpo[$campo] = $this->$metodo($campo, true);
+        }
+
+        return $corpo;
+    }
+
+    /** 422 com os erros por campo. */
+    private function dadosInvalidos(array $erros): void
+    {
+        $this->response([
+            'status' => false,
+            'message' => 'Dados inválidos.',
+            'erros' => $erros,
+        ], REST_Controller::HTTP_UNPROCESSABLE_ENTITY);
+    }
+
+    /**
+     * Filtro from/to (dd/mm/aaaa) da listagem: formato válido e janela de até
+     * 366 dias, ou 422. Preenche de/ate (Y-m-d) em $where.
+     *
+     * @param  mixed  $de
+     * @param  mixed  $ate
+     */
+    private function filtroDeDatas($de, $ate, array &$where): void
+    {
+        $erros = [];
+        $datas = [];
+        foreach (['from' => $de, 'to' => $ate] as $campo => $valor) {
+            if ($valor === null || $valor === '') {
+                continue;
+            }
+            $data = is_string($valor) ? apiDataValida($valor, 'd/m/Y') : null;
+            if ($data === null) {
+                $erros[$campo] = 'Informe a data no formato dd/mm/aaaa.';
+            } else {
+                $datas[$campo] = $data;
+            }
+        }
+
+        if ($erros === [] && isset($datas['from'], $datas['to']) && ! apiJanelaValida($datas['from'], $datas['to'])) {
+            $erros['to'] = 'O período pode ter no máximo 366 dias.';
+        }
+
+        if ($erros !== []) {
+            $this->response([
+                'status' => false,
+                'message' => 'Datas inválidas.',
+                'erros' => $erros,
+            ], REST_Controller::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if (isset($datas['from'])) {
+            $where['de'] = $datas['from'];
+        }
+        if (isset($datas['to'])) {
+            $where['ate'] = $datas['to'];
+        }
     }
 
     /**
