@@ -125,9 +125,10 @@ phases:
           persona: frontend
           status: done
           title: Tela Defina sua nova senha da área do cliente
-    - name: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
+    - completed_at: "2026-11-04 01:03:50"
+      name: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
       started_at: "2026-11-03 22:40:39"
-      status: in-progress
+      status: done
       tasks:
         - complexity: M
           deps:
@@ -274,5 +275,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 01:00:22"
+updated_at: "2026-11-04 01:03:50"
 ---
