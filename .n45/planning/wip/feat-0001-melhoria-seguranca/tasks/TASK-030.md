@@ -3,63 +3,65 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-04 01:21:15"
 criteria:
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: 422 marca os campos sem alert'' tests/js/login.test.mjs'
       text: 422 do login vira erros por campo (email) com mensagem null e o token do campo configurado
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: 401 e 403 com JSON'' tests/js/login.test.mjs'
       text: 401 e 403 com JSON mostram a message do servidor (passada por textoSimples) no alert
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: 429 mostra o tempo restante'' tests/js/login.test.mjs'
       text: 429 com retry_after 90 mostra 'Muitas tentativas de acesso. Tente de novo em 2 min.', com 30 mostra 1 min e sem retry_after mostra a message do servidor
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: 403 sem JSON'' tests/js/login.test.mjs'
       text: 403 sem JSON (CSRF recusado) mostra MENSAGEM_SESSAO
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: rede e timeout'' tests/js/login.test.mjs'
       text: ErroHttp status 0 e TypeError de rede mostram MENSAGEM_REDE
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''desfechoDaFalha: token vem do campo de nome configurado'' tests/js/login.test.mjs'
       text: Token CSRF é lido do corpo pelo nome da meta csrf-token-name (OUTRO), não de MAPOS_TOKEN
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''campoDoFoco: primeiro campo com erro ou a senha'' tests/js/login.test.mjs'
       text: campoDoFoco devolve email quando o e-mail tem erro, senha quando só a senha tem erro ou no alert de credenciais, e null em rede
-    - done: false
+    - done: true
       test: 'node --test --test-name-pattern=''interpretarResposta: sucesso com e sem destino'' tests/js/login.test.mjs'
       text: interpretarResposta devolve {ok:true} no sucesso e {ok:true, destino} com 2FA
-    - done: false
+    - done: true
       test: '! grep -nE ''MAPOS_TOKEN|mensagemDeFalha'' assets/js/modules/login/formulario.js'
       text: O módulo de login não usa mais MAPOS_TOKEN fixo nem mensagemDeFalha
-    - done: false
+    - done: true
       test: grep -q 'csrf-token-name' assets/js/modules/login/formulario.js
       text: O módulo de login lê o nome do campo CSRF da meta csrf-token-name
-    - done: false
+    - done: true
       test: grep -qE 'finally' assets/js/modules/login/formulario.js
       text: O botão sai do loading em todo desfecho de falha (marcarCarregando false num finally)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSucessoDoLogoutApareceNumAlertDeSucesso tests/Unit/LoginViewTest.php
       text: Login do painel mostra 'Você saiu.' num alert success quando sucesso vem preenchido e nenhum alert success sem ele
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMolduraTemTopNavTabbarEOModoDeCor tests/Unit/AreaDoClienteTest.php
       text: Moldura da área do cliente tem o Sair como form POST para mine/sai(r) com data-module=layout/sair, hidden MAPOS_TOKEN=hash-csrf e button submit, sem href GET
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testContaSaiPorFormularioPost tests/Unit/AreaDoClienteTest.php
       text: Tela da conta tem o atalho Sair como form POST com data-module=layout/sair, campo CSRF e button submit min-h-12, sem href GET
-    - done: false
+    - done: true
       test: '! grep -nE "href.{0,40}mine/s[a]ir" application/views/conecte/template.php application/views/conecte/conta.php'
       text: Nenhum link GET para mine/sai(r) nas views da área do cliente tocadas
-    - done: false
+    - done: true
       test: php scripts/check-escape.php && php scripts/check-inline-script.php
       text: Guardas de escape e de script inline não sobem a baseline
-    - done: false
+    - done: true
       test: npm run build && git diff --exit-code -- assets/dist/app.css
       text: CSS compilado em dia com as views
-    - done: false
+    - done: true
       test: npm run test:js && application/vendor/bin/phpunit tests/Unit/LoginViewTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/DefinirSenhaViewTest.php tests/Unit/AcessibilidadeTest.php
       text: Testes JS e as suítes das telas de login e da área do cliente passam
 deps:
     - TASK-025
     - TASK-029
+diff_base: 49230920dfcd23d073ab432a78761a92197751f7
+diff_tip: 996661bb0b58bc89107087962bab016bc919f543
 files:
     - assets/js/modules/login/formulario.js
     - tests/js/login.test.mjs
@@ -72,18 +74,22 @@ files:
 id: TASK-030
 linter: php scripts/check-escape.php && php scripts/check-inline-script.php
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Frontend**
+    - `assets/js/modules/login/formulario.js` (usado por `mapos/login` e `conecte/login`): exporta `desfechoDaFalha(erro, nomeCsrf)` -> `{mensagem, erros, token}`, `campoDoFoco(desfecho)`, `mensagemDeBloqueio(segundos)`, `interpretarResposta(dados)` -> `{ok:true[,destino]}`/`{ok:false,mensagem}`; remove `mensagemDeFalha`. Token CSRF lido da meta `csrf-token-name`; loading sai em todo desfecho de falha.
+    - `mapos/login`: alert success com `$sucesso` ("Você saiu.") antes do formulário.
+    - `conecte/template` e `conecte/conta`: "Sair" é form POST para `mine/sair` com `data-module="layout/sair"` e campo CSRF; sem link GET.
 persona: frontend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: node --test tests/js/login.test.mjs && application/vendor/bin/phpunit tests/Unit/LoginViewTest.php tests/Unit/AreaDoClienteTest.php
 title: Login por status HTTP no módulo de login e Sair por POST na área do cliente
-updated_at: "2026-11-04 01:21:15"
+updated_at: "2026-11-04 06:33:30"
 ---
 ## Contexto
 

@@ -3,39 +3,41 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-04 01:17:41"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testListagemDeOsDoClienteUsaPageEPerPage|testListagemDeOsSemParametrosUsaOPadrao' tests/Unit/ApiClientePaginacaoTest.php
       text: GET /api/v1/client/os?page=1&perPage=5 devolve o 2º bloco de 5 (ids 7, 6, 5, 4, 3) e sem parâmetros devolve as 12 OS
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testPerPageAcimaDoTetoViraCem|testPerPageNaoInteiroResponde422' tests/Unit/ApiClientePaginacaoTest.php
       text: perPage=1000000 na listagem de OS do cliente consulta com limite 100 e perPage=abc responde 422 com erros.perPage 'Informe um número inteiro de 1 a 100.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testListagemDeComprasUsaPageEPerPage|testPageNegativoNasComprasResponde422' tests/Unit/ApiClientePaginacaoTest.php
       text: GET /api/v1/client/compras?page=1&perPage=5 devolve as compras 7, 6, 5, 4, 3 e page=-1 responde 422 com erros.page
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testListagemDeCobrancasUsaPageEPerPage|testPerPageZeroNasCobrancasResponde422' tests/Unit/ApiClientePaginacaoTest.php
       text: GET /api/v1/client/cobrancas?page=2&perPage=5 devolve as cobranças 2 e 1 e perPage=0 responde 422
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testQrDaCompraVemDoValorDaVenda tests/Unit/ApiClientePaginacaoTest.php
       text: QR da compra 9 vem de vendas_model->getQrCode(9, ...) e os_model->getQrCode não é chamado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCompraDeOutroClienteResponde404 tests/Unit/ApiClientePaginacaoTest.php
       text: Compra de outro cliente continua 404 'Compra Não encontrada'
-    - done: false
+    - done: true
       test: '! grep -n ''segment(3)'' application/controllers/api/v1/client/ClientOsController.php application/controllers/api/v1/client/ClientComprasController.php application/controllers/api/v1/client/ClientCobrancasController.php'
       text: Nenhum segment(3) nos controllers da API do cliente
-    - done: false
+    - done: true
       test: grep -q 'paginacaoDaApi()' application/controllers/api/v1/client/ClientOsController.php && grep -q 'paginacaoDaApi()' application/controllers/api/v1/client/ClientComprasController.php && grep -q 'paginacaoDaApi()' application/controllers/api/v1/client/ClientCobrancasController.php
       text: As três listagens paginam por paginacaoDaApi()
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiClientePaginacaoTest.php tests/Unit/LimiteDeOsDoClienteTest.php tests/Unit/ApiClienteTokensTest.php tests/Unit/ApiBaseTest.php
       text: Suítes da API do cliente passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/api/v1/client/ClientOsController.php application/controllers/api/v1/client/ClientComprasController.php application/controllers/api/v1/client/ClientCobrancasController.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-003
     - TASK-027
+diff_base: 715664687f274bbc01a2de22a92cc36c31fb6eaf
+diff_tip: 49230920dfcd23d073ab432a78761a92197751f7
 files:
     - application/controllers/api/v1/client/ClientOsController.php
     - application/controllers/api/v1/client/ClientComprasController.php
@@ -44,18 +46,23 @@ files:
 id: TASK-028
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    # Outcome TASK-028 — Paginação e QR de venda da API do cliente
+
+    - `GET /api/v1/client/os`, `/compras`, `/cobrancas` (Bearer de cliente): query `perPage` (inteiro 1..100, padrão 20, >100 vira 100) e `page` (inteiro >= 0, padrão 0), `offset = page * perPage`, via `paginacaoDaApi()`. Inválido → 422 `{status:false, message:'Parâmetros de paginação inválidos.', erros:{perPage?, page?}}`. Listagem vazia: compras 404 'Nenhuma compra encontrada', cobranças 404 'Nenhum resultado encontrado'.
+    - `GET /api/v1/client/compras/{id}`: `result.QrCode` vem de `vendas_model->getQrCode()` (valor da venda); compra de outro cliente segue 404 'Compra Não encontrada'.
+    - `os_post()` intocado; nenhum `segment(3)` nos controllers da API do cliente.
 persona: backend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ApiClientePaginacaoTest.php
 title: Paginação e QR de venda da API do cliente
-updated_at: "2026-11-04 01:17:41"
+updated_at: "2026-11-04 06:32:59"
 ---
 ## Contexto
 

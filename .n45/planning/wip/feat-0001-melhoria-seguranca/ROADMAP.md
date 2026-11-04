@@ -226,7 +226,7 @@ phases:
             - TASK-027
           id: TASK-028
           persona: backend
-          status: pending
+          status: done
           title: Paginação e QR de venda da API do cliente
         - complexity: M
           deps:
@@ -241,7 +241,7 @@ phases:
             - TASK-029
           id: TASK-030
           persona: frontend
-          status: pending
+          status: done
           title: Login do painel e da área do cliente por status HTTP no módulo de login
     - name: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
       status: pending
@@ -276,5 +276,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 06:12:21"
+updated_at: "2026-11-04 06:32:48"
 ---
