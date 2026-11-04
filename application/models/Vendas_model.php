@@ -112,6 +112,75 @@ class Vendas_model extends CI_Model
         $this->db->where('vendas_id', $idVenda)->where_in('descricao', vendaDescricoesDaFatura($idVenda))->delete('lancamentos');
     }
 
+    /**
+     * Exclui a venda e o que é dela numa transação. $dentroDaTransacao roda logo após o BEGIN
+     * (ex.: devolver o estoque) e entra no mesmo rollback.
+     */
+    public function excluirComDependentes(int $idVenda, bool $excluirCobranca, ?int $idLancamentoFatura, bool $faturada, ?callable $dentroDaTransacao = null): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            if ($dentroDaTransacao !== null) {
+                $dentroDaTransacao();
+            }
+            if ($excluirCobranca) {
+                $this->db->where('vendas_id', $idVenda)->delete('cobrancas');
+            }
+            $this->db->where('vendas_id', $idVenda)->delete('itens_de_vendas');
+            $this->db->where('idVendas', $idVenda)->delete('vendas');
+            $apagou = $this->db->affected_rows() === 1;
+            if ($apagou && $faturada) {
+                $this->excluirFatura($idVenda, $idLancamentoFatura); // depois da venda: FK vendas.lancamentos_id
+            }
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_venda id=%d', $idVenda));
+
+        return false;
+    }
+
+    /**
+     * Fatura a venda: lançamento e dados da venda na mesma transação.
+     *
+     * @return int|null id do lançamento criado; null = rollback, nada mudou
+     */
+    public function faturar(int $idVenda, array $lancamento, array $dadosDaVenda): ?int
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->insert('lancamentos', $lancamento);
+            $idLancamento = (int) $this->db->insert_id();
+
+            if ($idLancamento > 0 && $this->db->trans_status() !== false) {
+                $this->db->where('idVendas', $idVenda)->update('vendas', $dadosDaVenda + ['lancamentos_id' => $idLancamento]);
+
+                if ($this->db->trans_status() !== false) {
+                    $this->db->trans_commit();
+
+                    return $idLancamento;
+                }
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=faturar_venda id=%d', $idVenda));
+
+        return null;
+    }
+
     public function getById($id)
     {
         $this->db->select('vendas.*, clientes.*, clientes.contato as contato_cliente, clientes.email as emailCliente, lancamentos.data_vencimento, usuarios.telefone as telefone_usuario, usuarios.email as email_usuario, usuarios.nome as nome');

@@ -64,7 +64,7 @@ if (! function_exists('usuarioApiPlanoEdicao')) {
             return $erro(400, 'Informe o ID do Usuário!');
         }
         if (! $proprio && ! $podeGerir) {
-            return $erro(401, 'Você não está autorizado a Editar Usuários!');
+            return $erro(403, 'Você não está autorizado a Editar Usuários!');
         }
         if (! $proprio) {
             $motivo = usuarioPodeSerEditadoPor($idAlvo, $idLogado);
@@ -198,5 +198,98 @@ if (! function_exists('usuarioApiGravarEdicao')) {
         $auditar('Alterou um usuário. ID: ' . $id, $nomeLogado);
 
         return true;
+    }
+}
+
+if (! function_exists('apiUsuarioPodeUsarApi')) {
+    /**
+     * Diz se o usuário ainda pode usar a API: existe, está ativo, a conta não
+     * expirou e o grupo de permissão não foi desativado.
+     *
+     * @param  callable(int): bool  $grupoAtivo  recebe o id do grupo (Mapos_model::grupoAtivo)
+     */
+    function apiUsuarioPodeUsarApi(?object $usuario, callable $grupoAtivo): bool
+    {
+        if (empty($usuario) || (int) ($usuario->situacao ?? 0) !== 1) {
+            return false;
+        }
+
+        if (contaExpirada($usuario->dataExpiracao ?? null)) {
+            return false;
+        }
+
+        return (bool) $grupoAtivo((int) ($usuario->permissoes_id ?? 0));
+    }
+}
+
+if (! function_exists('apiPaginacao')) {
+    /**
+     * Valida perPage (1 a 100, padrão 20) e page (a partir de 0, padrão 0).
+     * perPage acima de 100 vira 100.
+     *
+     * @param  mixed  $perPage
+     * @param  mixed  $page
+     * @return array{ok: true, limite: int, offset: int}|array{ok: false, erros: array<string, string>}
+     */
+    function apiPaginacao($perPage, $page): array
+    {
+        $erros = [];
+        $limite = 20;
+        $pagina = 0;
+
+        if ($perPage !== null && $perPage !== '') {
+            if (! preg_match('/^\d+$/', (string) $perPage) || (int) $perPage < 1) {
+                $erros['perPage'] = 'Informe um número inteiro de 1 a 100.';
+            } else {
+                $limite = min((int) $perPage, 100);
+            }
+        }
+
+        if ($page !== null && $page !== '') {
+            if (! preg_match('/^\d+$/', (string) $page)) {
+                $erros['page'] = 'Informe um número inteiro maior ou igual a 0.';
+            } else {
+                $pagina = (int) $page;
+            }
+        }
+
+        if ($erros !== []) {
+            return ['ok' => false, 'erros' => $erros];
+        }
+
+        return ['ok' => true, 'limite' => $limite, 'offset' => $pagina * $limite];
+    }
+}
+
+if (! function_exists('apiDataValida')) {
+    /**
+     * Data no formato dado, estritamente válida, devolvida em Y-m-d (ou null).
+     */
+    function apiDataValida(?string $valor, string $formato): ?string
+    {
+        $valor = trim((string) $valor);
+        $data = DateTimeImmutable::createFromFormat('!' . $formato, $valor);
+        $erros = DateTimeImmutable::getLastErrors();
+        // createFromFormat aceita 31/02 (vira 03/03) e só avisa em getLastErrors(): conferir a volta.
+        if ($data === false || ($erros !== false && ($erros['warning_count'] > 0 || $erros['error_count'] > 0)) || $data->format($formato) !== $valor) {
+            return null;
+        }
+
+        return $data->format('Y-m-d');
+    }
+}
+
+if (! function_exists('apiJanelaValida')) {
+    /** Período em Y-m-d com o fim não anterior ao início e no máximo $maxDias de diferença. */
+    function apiJanelaValida(string $inicioYmd, string $fimYmd, int $maxDias = 366): bool
+    {
+        $inicio = new DateTimeImmutable($inicioYmd);
+        $fim = new DateTimeImmutable($fimYmd);
+
+        if ($fim < $inicio) {
+            return false;
+        }
+
+        return (int) $inicio->diff($fim)->days <= $maxDias;
     }
 }

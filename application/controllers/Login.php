@@ -15,20 +15,34 @@ class Login extends CI_Controller
 
     public function index()
     {
+        // Abrir o login abandona o código de dois fatores pendente: o "Voltar
+        // ao login" da tela do código aponta para cá.
+        $this->session->unset_userdata('dois_fatores');
+
         // A tela de entrada é sempre escura (DESIGN.md), então não lê o modo
         // de cor das configurações.
         $this->load->view('mapos/login', [
             'erro' => $this->session->flashdata('error'),
+            'sucesso' => $this->input->get('saiu') === '1' ? 'Você saiu.' : null,
         ]);
     }
 
     public function sair()
     {
+        // Logout só por POST com CSRF (RF-27): um <img src=".../login/sair"> de
+        // outro site não derruba a sessão.
+        if ($this->input->method() !== 'post') {
+            $this->output->set_status_header(405)->set_header('Allow: POST');
+
+            return;
+        }
+
         $this->session->sess_destroy();
 
         // O Referer é controlado pelo cliente; redirecionar para ele permitiria
-        // que um terceiro enviasse o usuário para um domínio externo.
-        return redirect(site_url('login'));
+        // que um terceiro enviasse o usuário para um domínio externo. O "Você
+        // saiu." vai pela query string: a flashdata morre com a sessão.
+        return $this->irPara(site_url('login?saiu=1'));
     }
 
     public function verificarLogin()
@@ -42,19 +56,21 @@ class Login extends CI_Controller
         $this->form_validation->set_rules('email', 'E-mail', 'valid_email|required|trim');
         $this->form_validation->set_rules('senha', 'Senha', 'required|trim');
         if ($this->form_validation->run() == false) {
-            echo json_encode(['result' => false, 'message' => validation_errors()]);
-            exit();
+            $this->responderLogin(422, ['result' => false, 'message' => 'Confira os campos destacados.', 'erros' => $this->form_validation->error_array()]);
+
+            return;
         }
 
-        $email = $this->input->post('email');
-        $password = $this->input->post('senha');
+        $email = (string) $this->input->post('email');
+        $password = (string) $this->input->post('senha');
         $ip = $this->input->ip_address();
 
         // Limite de tentativas (#2870): bloqueado, nem consulta a senha.
         $this->load->library('Limite_login');
         if ($this->limite_login->bloqueado('usuario', $email, $ip)) {
-            echo json_encode($this->falha(Limite_login::MENSAGEM));
-            exit();
+            $this->responderLogin(429, ['result' => false, 'message' => Limite_login::MENSAGEM], max(1, $this->limite_login->segundosRestantes('usuario', $email, $ip)));
+
+            return;
         }
 
         $this->load->model('Mapos_model');
@@ -65,17 +81,19 @@ class Login extends CI_Controller
         // informada depois da senha certa, pelo mesmo motivo.
         // senhaConfere() gasta o mesmo bcrypt sem conta, para o tempo de resposta
         // também não revelar quais e-mails existem (#2879).
-        $senhaConfere = senhaConfere((string) $password, $user->senha ?? null);
+        $senhaConfere = senhaConfere($password, $user->senha ?? null);
         if (! $user || ! $senhaConfere) {
             $this->limite_login->registrarFalha('usuario', $email, $ip);
-            echo json_encode($this->falha('Os dados de acesso estão incorretos.'));
-            exit();
+            $this->responderLogin(401, ['result' => false, 'message' => 'Os dados de acesso estão incorretos.']);
+
+            return;
         }
 
         $bloqueio = $this->motivoDeBloqueio($user);
         if ($bloqueio !== null) {
-            echo json_encode($this->falha($bloqueio));
-            exit();
+            $this->responderLogin(403, ['result' => false, 'message' => $bloqueio]);
+
+            return;
         }
 
         // 2FA ativo (#2876): a senha sozinha não entra. A sessão guarda só que a
@@ -85,14 +103,14 @@ class Login extends CI_Controller
         if ($user->totp_ativado_em ?? null) {
             $this->session->sess_regenerate(true);
             $this->session->set_userdata('dois_fatores', ['email' => $user->email, 'expira' => time() + self::DOIS_FATORES_VALIDADE, 'tentativas' => 0]);
-            echo json_encode(['result' => true, 'destino' => site_url('login/doisFatores')]);
-            exit();
+            $this->responderLogin(200, ['result' => true, 'destino' => site_url('login/doisFatores')]);
+
+            return;
         }
 
         $this->limite_login->registrarSucesso('usuario', $email);
         $this->iniciarSessao($user);
-        echo json_encode(['result' => true]);
-        exit();
+        $this->responderLogin(200, ['result' => true]);
     }
 
     /**
@@ -205,11 +223,36 @@ class Login extends CI_Controller
     }
 
     /**
-     * Resposta de login recusado, com o token CSRF novo para a próxima tentativa.
+     * Resposta do login em JSON com status HTTP (RF-29). Fora do 200 leva o
+     * token CSRF novo no campo de nome configurável (APP_CSRF_TOKEN_NAME).
      */
-    private function falha(string $mensagem): array
+    private function responderLogin(int $status, array $corpo, ?int $retryAfter = null): void
     {
-        return ['result' => false, 'message' => $mensagem, 'MAPOS_TOKEN' => $this->security->get_csrf_hash()];
+        if ($retryAfter !== null) {
+            $corpo['retry_after'] = $retryAfter;
+            $this->output->set_header('Retry-After: ' . $retryAfter);
+        }
+
+        if ($status !== 200) {
+            $corpo[$this->security->get_csrf_token_name()] = $this->security->get_csrf_hash();
+        }
+
+        $this->output
+            ->set_status_header($status)
+            ->set_content_type('application/json', 'utf-8')
+            ->set_output(json_encode($corpo));
+        $this->output->_display();
+        $this->encerrar();
+    }
+
+    protected function irPara(string $url)
+    {
+        redirect($url);
+    }
+
+    protected function encerrar()
+    {
+        exit;
     }
 
     /**

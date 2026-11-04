@@ -185,7 +185,11 @@ class Usuarios extends MY_Controller
         }
 
         $this->load->model('mapos_model');
-        $this->mapos_model->desativarTotp($id);
+        if (! $this->mapos_model->desativarTotp($id)) {
+            $this->session->set_flashdata('error', 'Não foi possível redefinir o 2FA. Tente de novo.');
+
+            return redirect('usuarios/editar/' . $id);
+        }
         log_info('Redefiniu o 2FA de um usuário. ID: ' . $id);
         $this->session->set_flashdata('success', 'Autenticação em dois fatores do usuário redefinida.');
 

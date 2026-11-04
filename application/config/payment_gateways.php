@@ -13,7 +13,7 @@ $config['payment_gateways'] = [
             'client_id' => $_ENV['PAYMENT_GATEWAYS_EFI_CREDENTIAIS_CLIENT_ID'] ?? '',
             'client_secret' => $_ENV['PAYMENT_GATEWAYS_EFI_CREDENTIAIS_CLIENT_SECRET'] ?? '',
         ],
-        'timeout' => $_ENV['PAYMENT_GATEWAYS_EFI_TIMEOUT'] ?? 30,
+        'timeout' => ((int) ($_ENV['PAYMENT_GATEWAYS_EFI_TIMEOUT'] ?? 0)) > 0 ? (int) $_ENV['PAYMENT_GATEWAYS_EFI_TIMEOUT'] : 10,
         'boleto_expiration' => $_ENV['PAYMENT_GATEWAYS_EFI_BOLETO_EXPIRATION'] ?? 'P3D',
         'payment_methods' => [
             [
@@ -55,6 +55,7 @@ $config['payment_gateways'] = [
             'corporation_id' => $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_CREDENTIALS_CORPORATION_ID'] ?? '',
         ],
         'boleto_expiration' => $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_BOLETO_EXPIRATION'] ?? 'P3D',
+        'timeout' => ((int) ($_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT'] ?? 0)) > 0 ? (int) $_ENV['PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT'] : 10,
         'payment_methods' => [
             [
                 'name' => 'Boleto',
@@ -82,6 +83,7 @@ $config['payment_gateways'] = [
             'api_key' => $_ENV['PAYMENT_GATEWAYS_ASAAS_CREDENTIAIS_API_KEY'] ?? '',
         ],
         'boleto_expiration' => $_ENV['PAYMENT_GATEWAYS_ASAAS_BOLETO_EXPIRATION'] ?? 'P3D',
+        'timeout' => ((int) ($_ENV['PAYMENT_GATEWAYS_ASAAS_TIMEOUT'] ?? 0)) > 0 ? (int) $_ENV['PAYMENT_GATEWAYS_ASAAS_TIMEOUT'] : 10,
         'payment_methods' => [
             [
                 'name' => 'Boleto',

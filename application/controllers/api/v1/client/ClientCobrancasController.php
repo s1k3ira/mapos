@@ -7,7 +7,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . '/libraries/REST_Controller.php';
+require_once APPPATH . '/libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class ClientCobrancasController extends REST_Controller
 {
@@ -22,7 +22,8 @@ class ClientCobrancasController extends REST_Controller
     {
         $clientLogged = $this->logged_client();
         
-        $cobrancas = $this->Conecte_model->getCobrancas('cobrancas', '*', '', 20, $this->uri->segment(3), '', '', $this->logged_client()->usuario->idClientes);
+        [$limite, $offset] = $this->paginacaoDaApi();
+        $cobrancas = $this->Conecte_model->getCobrancas('cobrancas', '*', '', $limite, $offset, '', '', $clientLogged->usuario->idClientes);
         
         if (empty($cobrancas)) {
             $this->response([

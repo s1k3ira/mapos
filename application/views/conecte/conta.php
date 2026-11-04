@@ -48,6 +48,9 @@ $classeAtalho = 'flex min-h-12 items-center gap-3 rounded-md px-3 text-body-md t
 
     <nav class="rounded-xl border border-border bg-surface p-2 lg:hidden" aria-label="Atalhos da conta">
         <a href="<?= e(site_url('mine/cobrancas')) ?>" class="<?= e($classeAtalho) ?>"><?= icon('receipt', ['class' => 'size-5 text-muted']) ?><span class="flex-1">Cobranças</span><?= icon('chevron-right', ['class' => 'size-4 text-muted']) ?></a>
-        <a href="<?= e(site_url('mine/sair')) ?>" class="<?= e($classeAtalho) ?>"><?= icon('log-out', ['class' => 'size-5 text-muted']) ?><span class="flex-1">Sair</span></a>
+        <form method="post" action="<?= e(site_url('mine/sair')) ?>" <?= js_module('layout/sair') ?>>
+            <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">
+            <button type="submit" class="<?= e($classeAtalho) ?> w-full cursor-pointer text-left"><?= icon('log-out', ['class' => 'size-5 text-muted']) ?><span class="flex-1">Sair</span></button>
+        </form>
     </nav>
 </div>

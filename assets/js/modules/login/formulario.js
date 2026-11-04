@@ -1,11 +1,13 @@
 // Formulário de login do painel (views/mapos/login.php) e da área do cliente
 // (views/conecte/login.php), que respondem no mesmo contrato.
 //
-// Valida no navegador, posta em login/verificarLogin pelo post() de
-// lib/http.js e mostra o erro no alert da própria página, sem modal. O
-// contrato do servidor é o mesmo da tela antiga: {result, message,
-// MAPOS_TOKEN}. A resposta sai sem Content-Type JSON, então chega como texto e
-// é interpretada aqui.
+// Valida no navegador, posta em login/verificarLogin (ou mine/login) pelo
+// post() de lib/http.js e mostra o erro na própria página, sem modal. O
+// servidor responde por status HTTP com JSON: 200 {result:true[, destino]};
+// 422 com erros por campo; 401/403 com a message; 429 com retry_after. O
+// post() rejeita com ErroHttp(status, message, corpo) a partir de 400, e é ele
+// que decide o desfecho. O token CSRF novo vem no campo de nome configurado
+// (meta csrf-token-name).
 
 import { ErroHttp, post } from '../../lib/http.js';
 import { marcarCarregando, mostrarErroDoCampo } from '../../lib/formulario.js';
@@ -40,50 +42,83 @@ export function validar({ email, senha }, textos = {}) {
 }
 
 /**
- * Normaliza a resposta do verificarLogin, que pode chegar como texto JSON.
+ * Resposta de sucesso do login (status 200). 2FA manda o destino da tela do
+ * código (#2876).
  *
- * @returns {{ok: boolean, mensagem: string, token: string|null}}
+ * @returns {{ok: true, destino?: string}|{ok: false, mensagem: string}}
  */
-export function interpretarResposta(corpo) {
-    let dados = corpo;
-
-    if (typeof corpo === 'string') {
-        try {
-            dados = JSON.parse(corpo);
-        } catch {
-            return { ok: false, mensagem: MENSAGEM_PADRAO, token: null };
-        }
+export function interpretarResposta(dados) {
+    if (dados && typeof dados === 'object' && dados.result === true) {
+        return typeof dados.destino === 'string' && dados.destino !== '' ? { ok: true, destino: dados.destino } : { ok: true };
     }
 
-    if (!dados || typeof dados !== 'object') {
-        return { ok: false, mensagem: MENSAGEM_PADRAO, token: null };
-    }
+    const mensagem = dados && typeof dados === 'object' ? textoSimples(dados.message) : '';
 
-    const ok = dados.result === true;
-    // A validação do servidor manda HTML do validation_errors(); só o texto
-    // interessa, e ele é exibido com textContent.
-    const mensagem = ok ? '' : textoSimples(dados.message) || MENSAGEM_PADRAO;
-
-    // Com 2FA ativo o servidor manda o login para a tela do código (#2876).
-    const destino = ok && typeof dados.destino === 'string' ? dados.destino : null;
-
-    return { ok, mensagem, token: typeof dados.MAPOS_TOKEN === 'string' ? dados.MAPOS_TOKEN : null, ...(destino ? { destino } : {}) };
+    return { ok: false, mensagem: mensagem || MENSAGEM_PADRAO };
 }
 
 export function textoSimples(valor) {
     return String(valor ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** "Muitas tentativas de acesso. Tente de novo em N min." (N >= 1), ou null sem número. */
+export function mensagemDeBloqueio(segundos) {
+    const s = Number(segundos);
+    if (!Number.isFinite(s) || s <= 0) return null;
+
+    return `Muitas tentativas de acesso. Tente de novo em ${Math.max(1, Math.ceil(s / 60))} min.`;
+}
+
 /**
- * Mensagem para uma falha de requisição. 403 aqui é o CSRF recusado (token
- * vencido, por exemplo depois de muito tempo com a página aberta).
+ * Desfecho de uma falha do login (RF-29/RF-53): mensagem do alert OU erros
+ * por campo (nunca os dois), e o token CSRF novo do corpo, quando veio.
+ *
+ * @returns {{mensagem: string|null, erros: Record<string,string>|null, token: string|null}}
  */
-export function mensagemDeFalha(erro) {
-    if (erro instanceof ErroHttp) {
-        return erro.status === 403 ? MENSAGEM_SESSAO : MENSAGEM_PADRAO;
+export function desfechoDaFalha(erro, nomeCsrf) {
+    const semCorpo = (mensagem) => ({ mensagem, erros: null, token: null });
+
+    if (!(erro instanceof ErroHttp) || erro.status === 0) {
+        return semCorpo(MENSAGEM_REDE);
     }
 
-    return MENSAGEM_REDE;
+    const corpo = erro.corpo;
+
+    // Sem JSON: 403 é o CSRF recusado pelo framework (token vencido).
+    if (!corpo || typeof corpo !== 'object') {
+        return semCorpo(erro.status === 403 ? MENSAGEM_SESSAO : MENSAGEM_PADRAO);
+    }
+
+    const token = nomeCsrf && typeof corpo[nomeCsrf] === 'string' ? corpo[nomeCsrf] : null;
+    const doServidor = () => textoSimples(corpo.message) || MENSAGEM_PADRAO;
+
+    if (erro.status === 422 && corpo.erros && typeof corpo.erros === 'object') {
+        const erros = {};
+        for (const campo of ['email', 'senha']) {
+            if (corpo.erros[campo] !== undefined) erros[campo] = textoSimples(corpo.erros[campo]);
+        }
+
+        return { mensagem: null, erros, token };
+    }
+
+    if (erro.status === 429) {
+        return { mensagem: mensagemDeBloqueio(corpo.retry_after) ?? doServidor(), erros: null, token };
+    }
+
+    if (erro.status === 401 || erro.status === 403) {
+        return { mensagem: doServidor(), erros: null, token };
+    }
+
+    return { mensagem: MENSAGEM_PADRAO, erros: null, token };
+}
+
+/** 'email' | 'senha' | null: onde pôr o foco depois da falha. */
+export function campoDoFoco(desfecho) {
+    if (desfecho.erros?.email) return 'email';
+    if (desfecho.erros?.senha) return 'senha';
+    if (!desfecho.erros && desfecho.mensagem !== MENSAGEM_REDE && desfecho.mensagem !== MENSAGEM_SESSAO) return 'senha';
+
+    return null;
 }
 
 export default function iniciar(formulario) {
@@ -104,6 +139,8 @@ export default function iniciar(formulario) {
         texto.textContent = mensagem;
         caixa.hidden = !mensagem;
     }
+
+    const nomeCsrf = document.querySelector('meta[name="csrf-token-name"]')?.content ?? null;
 
     const carregando = (ativo) => marcarCarregando(botao, ativo);
 
@@ -129,30 +166,41 @@ export default function iniciar(formulario) {
 
         mostrarMensagem('');
         carregando(true);
+        let navegando = false;
 
         try {
             const resposta = interpretarResposta(await post(formulario.action, new FormData(formulario)));
 
             if (resposta.ok) {
+                navegando = true;
                 window.location.assign(resposta.destino ?? formulario.dataset.destino);
                 return;
             }
 
-            // O post() já atualiza o campo pelo cookie; o MAPOS_TOKEN da resposta
+            mostrarMensagem(resposta.mensagem);
+        } catch (erro) {
+            const desfecho = desfechoDaFalha(erro, nomeCsrf);
+
+            // O post() já atualiza o campo pelo cookie; o token da resposta
             // cobre o caso de o cookie não ser legível.
-            const nomeCsrf = document.querySelector('meta[name="csrf-token-name"]')?.content;
-            const campoCsrf = nomeCsrf ? formulario.querySelector(`input[name="${CSS.escape(nomeCsrf)}"]`) : null;
-            if (resposta.token && campoCsrf) {
-                campoCsrf.value = resposta.token;
+            const campoCsrf = desfecho.token && nomeCsrf
+                ? [...formulario.querySelectorAll('input[type="hidden"]')].find((campo) => campo.name === nomeCsrf)
+                : null;
+            if (campoCsrf) campoCsrf.value = desfecho.token;
+
+            if (desfecho.erros) {
+                mostrarErroDoCampo(email, desfecho.erros.email);
+                mostrarErroDoCampo(senha, desfecho.erros.senha);
+            } else {
+                mostrarMensagem(desfecho.mensagem);
+                if (campoDoFoco(desfecho) === 'senha') senha.value = '';
             }
 
-            mostrarMensagem(resposta.mensagem);
-            senha.value = '';
-            senha.focus();
-        } catch (erro) {
-            mostrarMensagem(mensagemDeFalha(erro));
+            const alvo = campoDoFoco(desfecho);
+            if (alvo === 'email') email.focus();
+            else if (alvo === 'senha') senha.focus();
+        } finally {
+            if (!navegando) carregando(false);
         }
-
-        carregando(false);
     });
 }

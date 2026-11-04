@@ -3,11 +3,25 @@
 namespace Libraries\Gateways;
 
 use Libraries\Gateways\Contracts\PaymentGateway;
+use Libraries\Gateways\Exceptions\GatewayIndisponivelException;
+use Libraries\Gateways\Exceptions\GatewayRecusouException;
 
 abstract class BasePaymentGateway implements PaymentGateway
 {
     /** @var object Instância do CodeIgniter, injetada por get_instance() no construtor dos gateways */
     protected $ci;
+
+    /** Status de pagamento confirmado em cada provedor (comparação exata: o provedor define a caixa). */
+    public const STATUS_PAGOS = [
+        'GerencianetSdk' => ['paid', 'settled'],
+        'MercadoPago' => ['approved'],
+        'Asaas' => ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'DUNNING_RECEIVED'],
+    ];
+
+    public static function statusPago(string $gateway, string $status): bool
+    {
+        return in_array($status, self::STATUS_PAGOS[$gateway] ?? [], true);
+    }
 
     /**
      * Existe só para satisfazer o PHPStan.
@@ -109,6 +123,58 @@ abstract class BasePaymentGateway implements PaymentGateway
     public function confirmarPagamento($id)
     {
         throw new \Exception('Não implementado');
+    }
+
+    /** Executa a chamada ao provedor; falha vira GatewayRecusou/Indisponivel e uma linha de log sem dado pessoal. */
+    protected function chamarGateway(string $operacao, $idCobranca, callable $chamada)
+    {
+        $inicio = microtime(true);
+        try {
+            return $chamada();
+        } catch (GatewayRecusouException | GatewayIndisponivelException $e) {
+            $origem = $e->getPrevious() ?? $e;
+            $this->registrarFalha($operacao, $idCobranca, $this->codigoHttp($origem), $inicio, $origem);
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->registrarFalha($operacao, $idCobranca, $this->codigoHttp($e), $inicio, $e);
+            throw $this->traduzirFalha($e, $operacao);
+        }
+    }
+
+    protected function registrarFalha(string $operacao, $idCobranca, ?int $http, float $inicio, \Throwable $erro): void
+    {
+        log_message('error', sprintf(
+            'gateway op=%s gateway=%s cobranca=%s http=%s duracao_ms=%d erro=%s',
+            $operacao,
+            $this->nomeDoGateway(),
+            $idCobranca ?? '-',
+            $http ?? '-',
+            (int) round((microtime(true) - $inicio) * 1000),
+            $erro::class
+        ));
+    }
+
+    protected function traduzirFalha(\Throwable $e, string $operacao): \RuntimeException
+    {
+        return new GatewayIndisponivelException(GatewayIndisponivelException::MENSAGEM, $e);
+    }
+
+    protected function codigoHttp(\Throwable $e): ?int
+    {
+        return null;
+    }
+
+    protected function nomeDoGateway(): string
+    {
+        return (new \ReflectionClass($this))->getShortName();
+    }
+
+    /** URL de notificação montada do próprio site; null quando o segredo do webhook não está configurado. */
+    protected function urlDeNotificacao(string $variavelDoSegredo, string $rota): ?string
+    {
+        $segredo = trim((string) ($_ENV[$variavelDoSegredo] ?? ''));
+
+        return $segredo === '' ? null : site_url($rota);
     }
 
     abstract protected function gerarCobrancaBoleto($id, $tipo);

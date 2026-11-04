@@ -1,8 +1,11 @@
 <?php
 
 use Efi\EfiPay;
+use Efi\Exception\EfiException;
 use Libraries\Gateways\BasePaymentGateway;
 use Libraries\Gateways\Contracts\PaymentGateway;
+use Libraries\Gateways\Exceptions\GatewayIndisponivelException;
+use Libraries\Gateways\Exceptions\GatewayRecusouException;
 
 class GerencianetSdk extends BasePaymentGateway
 {
@@ -31,6 +34,98 @@ class GerencianetSdk extends BasePaymentGateway
         ]);
     }
 
+    protected function nomeDoGateway(): string
+    {
+        return 'GerencianetSdk';
+    }
+
+    protected function codigoHttp(\Throwable $e): ?int
+    {
+        return $e instanceof EfiException || $e instanceof \UnexpectedValueException ? (int) $e->getCode() : null;
+    }
+
+    protected function traduzirFalha(\Throwable $e, string $operacao): \RuntimeException
+    {
+        if ($e instanceof EfiException) {
+            $status = (int) $e->getCode();
+            if ($status >= 400 && $status < 500 && ! in_array($status, [401, 403, 429], true)) {
+                return new GatewayRecusouException(
+                    in_array($operacao, ['criar_boleto', 'criar_link'], true)
+                        ? 'A Efí recusou os dados da cobrança. Confira CPF/CNPJ, e-mail e endereço do cliente.'
+                        : 'A Efí recusou a operação. Confira os dados e tente novamente.',
+                    $e
+                );
+            }
+        }
+
+        return new GatewayIndisponivelException(GatewayIndisponivelException::MENSAGEM, $e);
+    }
+
+    /** Chama o SDK; resposta com code diferente de 200 vira indisponível, guardando o code para o log. */
+    private function chamarEfi(string $operacao, $idCobranca, callable $chamada)
+    {
+        return $this->chamarGateway($operacao, $idCobranca, function () use ($chamada) {
+            $resposta = $chamada();
+            if (intval($resposta['code'] ?? 0) !== 200) {
+                throw new GatewayIndisponivelException(
+                    GatewayIndisponivelException::MENSAGEM,
+                    new \UnexpectedValueException('code', (int) ($resposta['code'] ?? 0))
+                );
+            }
+
+            return $resposta;
+        });
+    }
+
+    /**
+     * Reconsulta no provedor a cobrança de uma notificação (webhook): o status vem do detailCharge.
+     *
+     * @return array{charge_id: string, status: string, valor_centavos: int}
+     *
+     * @throws GatewayRecusouException|GatewayIndisponivelException
+     */
+    public function consultarPagamento(string $idExterno): array
+    {
+        $notificacao = $this->chamarEfi('consultar_webhook', null, fn () => $this->gerenciaNetApi->getNotification(['token' => $idExterno]));
+
+        $chargeId = null;
+        foreach (array_reverse((array) ($notificacao['data'] ?? [])) as $item) {
+            $id = $item['identifiers']['charge_id'] ?? null;
+            if ($id !== null && $id !== '') {
+                $chargeId = $id;
+                break;
+            }
+        }
+        if ($chargeId === null) {
+            throw new GatewayRecusouException('Notificação da Efí sem cobrança.');
+        }
+
+        $cobranca = $this->chamarEfi('consultar_webhook', null, fn () => $this->gerenciaNetApi->detailCharge(['id' => $chargeId], []));
+        $dados = $cobranca['data'] ?? [];
+
+        return [
+            'charge_id' => (string) ($dados['charge_id'] ?? $chargeId),
+            'status' => (string) ($dados['status'] ?? ''),
+            'valor_centavos' => (int) ($dados['total'] ?? 0),
+        ];
+    }
+
+    private function descricaoDaCobranca($id, string $tipo): string
+    {
+        return $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";
+    }
+
+    /** Corpo com metadata só quando há segredo de webhook configurado. */
+    private function comNotificationUrl(array $corpo): array
+    {
+        $url = $this->urlDeNotificacao('EFI_WEBHOOK_SECRET', 'webhooks/efi/' . trim((string) ($_ENV['EFI_WEBHOOK_SECRET'] ?? '')));
+        if ($url !== null) {
+            $corpo['metadata'] = ['notification_url' => $url];
+        }
+
+        return $corpo;
+    }
+
     public function cancelar($id)
     {
         $cobranca = $this->ci->cobrancas_model->getById($id);
@@ -38,10 +133,7 @@ class GerencianetSdk extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        $response = $this->gerenciaNetApi->cancelCharge(['id' => $cobranca->charge_id], []);
-        if (intval($response['code']) !== 200) {
-            throw new \Exception('Erro ao chamar GerenciaNet!');
-        }
+        $this->chamarEfi('cancelar', $id, fn () => $this->gerenciaNetApi->cancelCharge(['id' => $cobranca->charge_id], []));
 
         return $this->atualizarDados($id);
     }
@@ -100,10 +192,7 @@ class GerencianetSdk extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        $result = $this->gerenciaNetApi->detailCharge(['id' => $cobranca->charge_id], []);
-        if (intval($result['code']) !== 200) {
-            throw new \Exception('Erro ao chamar GerenciaNet!');
-        }
+        $result = $this->chamarEfi('atualizar', $id, fn () => $this->gerenciaNetApi->detailCharge(['id' => $cobranca->charge_id], []));
 
         // Cobrança foi paga ou foi confirmada de forma manual, então damos baixa
         if ($result['data']['status'] == 'paid' || $result['data']['status'] == 'settled') {
@@ -135,10 +224,7 @@ class GerencianetSdk extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        $response = $this->gerenciaNetApi->settleCharge(['id' => $cobranca->charge_id], []);
-        if (intval($response['code']) !== 200) {
-            throw new \Exception('Erro ao chamar GerenciaNet!');
-        }
+        $this->chamarEfi('confirmar', $id, fn () => $this->gerenciaNetApi->settleCharge(['id' => $cobranca->charge_id], []));
 
         return $this->atualizarDados($id);
     }
@@ -166,14 +252,14 @@ class GerencianetSdk extends BasePaymentGateway
             'street' => $entity->rua,
             'number' => $entity->numero,
             'neighborhood' => $entity->bairro,
-            'zipcode' => preg_replace('/[^0-9]/', '', $entity->cep),
+            'zipcode' => preg_replace('/[^0-9]/', '', (string) ($entity->cep ?? '')),
             'city' => $entity->cidade,
             'complement' => $entity->complemento,
             'state' => $entity->estado,
         ];
 
-        $documento = preg_replace('/[^0-9]/', '', $entity->documento);
-        $telefone = preg_replace('/[^0-9]/', '', $entity->telefone);
+        $documento = preg_replace('/[^0-9]/', '', (string) ($entity->documento ?? ''));
+        $telefone = preg_replace('/[^0-9]/', '', (string) ($entity->telefone ?? ''));
         if (strlen($documento) == 11) {
             $customer = [
                 'name' => $entity->nomeCliente,
@@ -198,13 +284,10 @@ class GerencianetSdk extends BasePaymentGateway
         $body = [
             'items' => [
                 [
-                    'name' => $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
+                    'name' => $this->descricaoDaCobranca($id, $tipo),
                     'amount' => 1,
                     'value' => getMoneyAsCents($valor),
                 ],
-            ],
-            'metadata' => [
-                'notification_url' => 'http://mapos.com.br/',
             ],
             'payment' => [
                 'banking_billet' => [
@@ -214,11 +297,9 @@ class GerencianetSdk extends BasePaymentGateway
                 ],
             ],
         ];
+        $body = $this->comNotificationUrl($body);
 
-        $result = $this->gerenciaNetApi->createOneStepCharge([], $body);
-        if (intval($result['code']) !== 200) {
-            throw new \Exception('Erro ao chamar GerenciaNet!');
-        }
+        $result = $this->chamarEfi('criar_boleto', null, fn () => $this->gerenciaNetApi->createOneStepCharge([], $body));
 
         $data = [
             'barcode' => $result['data']['barcode'],
@@ -270,18 +351,14 @@ class GerencianetSdk extends BasePaymentGateway
 
         $expirationDate = (new DateTime())->add(new DateInterval('P3D'));
         $expirationDate = ($expirationDate->format('Y-m-d'));
-        $title = $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id";
+        $title = $this->descricaoDaCobranca($id, $tipo);
 
         $items = [
             [
-                'name' => $tipo === PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
+                'name' => $title,
                 'amount' => 1,
                 'value' => getMoneyAsCents($valor),
             ],
-        ];
-
-        $metadata = [
-            "notification_url" => "http://mapos.com.br/"
         ];
 
         $settings = [
@@ -291,17 +368,12 @@ class GerencianetSdk extends BasePaymentGateway
             'message' => 'Pagamento referente a ' . $title,
         ];
 
-        $body = [
+        $body = $this->comNotificationUrl([
             "items" => $items,
-            "metadata" => $metadata,
             "settings" => $settings,
-        ];
+        ]);
 
-        $result = $this->gerenciaNetApi->createOneStepLink($params = [], $body);
-
-        if (intval($result['code']) !== 200) {
-            throw new \Exception('Erro ao chamar GerenciaNet!');
-        }
+        $result = $this->chamarEfi('criar_link', null, fn () => $this->gerenciaNetApi->createOneStepLink([], $body));
 
         $data = [
             'expire_at' => $result['data']['expire_at'],

@@ -7,7 +7,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . '/libraries/REST_Controller.php';
+require_once APPPATH . '/libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 
 class ClientOsController extends REST_Controller
@@ -17,8 +17,8 @@ class ClientOsController extends REST_Controller
         parent::__construct();
         $this->load->model('Conecte_model');
         $this->load->helper('os');
+        $this->load->helper('conecte');
         $this->load->library('Authorization_Token');
-        $this->load->library('pagination');
         $this->load->library('format');
         $this->load->model('mapos_model');
         $this->load->model('os_model');
@@ -52,9 +52,8 @@ class ClientOsController extends REST_Controller
     {
         $clientLogged = $this->logged_client();
         if (! $id) {
-            $config['per_page'] = $this->CI->db->get_where('configuracoes', ['config' => 'per_page'])->row_object()->valor;
-            $this->pagination->initialize($config);
-            $data['results'] = $this->Conecte_model->getOs('os', '*', '', $config['per_page'], $this->uri->segment(3), '', '', $this->logged_client()->usuario->idClientes);
+            [$limite, $offset] = $this->paginacaoDaApi();
+            $data['results'] = $this->Conecte_model->getOs('os', '*', '', $limite, $offset, '', '', $clientLogged->usuario->idClientes);
         
             $this->response([
                 'status' => true,
@@ -129,79 +128,88 @@ class ClientOsController extends REST_Controller
 
     public function os_post()
     {
-        header('Content-Type: application/json');
-        
-        $_POST = (array) json_decode(file_get_contents('php://input'), true);
-
         $clientLogged = $this->logged_client();
+        $idCliente = (int) $clientLogged->usuario->idClientes;
+        $corpo = $this->corpoJson();
 
-        $this->load->library('form_validation');
-        $this->form_validation->set_rules('descricaoProduto', 'Descrição', 'required');
-        $this->form_validation->set_rules('defeito', 'Defeito');
-        $this->form_validation->set_rules('observacoes', 'Observações');
-    
-        if ($this->form_validation->run() === false) {
+        $erros = conecteErrosDaNovaOs($corpo);
+        if ($erros !== []) {
             $this->response([
                 'status' => false,
-                'message' => validation_errors() ?: 'Erro de validação.',
-            ], REST_Controller::HTTP_BAD_REQUEST);
+                'message' => 'Dados inválidos.',
+                'erros' => $erros,
+            ], REST_Controller::HTTP_UNPROCESSABLE_ENTITY);
             return;
         }
-    
-        $usuario = $this->db->query('SELECT usuarios_id, count(*) as down FROM os GROUP BY usuarios_id ORDER BY down LIMIT 1')->row();
 
-        if ($usuario == null) {
-            $this->db->where('situacao', 1);
-            $this->db->limit(1);
-            $usuario = $this->db->get('usuarios')->row();
-    
-            if ($usuario->idUsuarios == null) {
-                $this->response([
-                    'status' => false,
-                    'message' => 'Ocorreu um erro ao atribuir a ordem de serviço. Por favor, contate o administrador do sistema.',
-                ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
-                return;
-            }
+        $usuarioId = $this->Conecte_model->tecnicoParaNovaOs();
+        if ($usuarioId === null) {
+            $this->response([
+                'status' => false,
+                'message' => 'Ocorreu um erro ao atribuir a ordem de serviço. Por favor, contate o administrador do sistema.',
+            ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+            return;
         }
 
-        $usuarioId = $usuario->usuarios_id ?? $usuario->idUsuarios;
-
+        $texto = static fn (string $campo): string => osTextoParaGravar(is_string($corpo[$campo] ?? null) ? $corpo[$campo] : '');
         $data = [
             'dataInicial' => date('Y-m-d'),
-            'clientes_id' => $this->logged_client()->usuario->idClientes,
             'usuarios_id' => $usuarioId,
             'dataFinal' => date('Y-m-d'),
-            'descricaoProduto' => osTextoParaGravar((string) $this->input->post('descricaoProduto')),
-            'defeito' => osTextoParaGravar((string) $this->input->post('defeito')),
+            'descricaoProduto' => $texto('descricaoProduto'),
+            'defeito' => $texto('defeito'),
             'status' => 'Aberto',
-            'observacoes' => osTextoParaGravar((string) $this->input->post('observacoes')),
+            'observacoes' => $texto('observacoes'),
             'faturado' => 0,
         ];
 
-        $osId = $this->Conecte_model->add('os', $data, true);
+        $resultado = $this->Conecte_model->abrirOsDoCliente($idCliente, $data, clienteOsLimiteDiario());
 
-        $this->load->model('Audit_model');
-        $log_data = [
-            'Usuario' => '[APP]',
-            'tarefa' => 'Cliente ' . $this->logged_client()->usuario->nomeCliente . " Adicionou uma OS Nº ${osId} pelo APP",
-            'data' => date('Y-m-d'),
-            'hora' => date('H:i:s'),
-            'ip' => $_SERVER['REMOTE_ADDR']
-        ];
-        $this->Audit_model->add($log_data);
-            
-        if (is_numeric($osId)) {
-            $this->response([
-                'status' => true,
-                'message' => 'Ordem de serviço criada com sucesso.',
-                'os_id' => $osId,
-            ], REST_Controller::HTTP_CREATED);
-        } else {
+        if (! $resultado['ok']) {
+            if ($resultado['motivo'] === 'limite') {
+                $this->output->set_header('Retry-After: ' . segundosAteAmanha($this->agora()));
+                $this->response([
+                    'status' => false,
+                    'message' => Conecte_model::LIMITE_OS_MENSAGEM,
+                ], REST_Controller::HTTP_TOO_MANY_REQUESTS);
+                return;
+            }
+
             $this->response([
                 'status' => false,
                 'message' => 'Ocorreu um erro ao criar a ordem de serviço.',
             ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+            return;
         }
+
+        $osId = $resultado['id'];
+        $this->load->model('Audit_model');
+        $this->Audit_model->add([
+            'Usuario' => '[APP]',
+            'tarefa' => 'Cliente ' . $clientLogged->usuario->nomeCliente . ' Adicionou uma OS Nº ' . $osId . ' pelo APP',
+            'data' => date('Y-m-d'),
+            'hora' => date('H:i:s'),
+            'ip' => $this->input->ip_address(),
+        ]);
+
+        $this->response([
+            'status' => true,
+            'message' => 'Ordem de serviço criada com sucesso.',
+            'os_id' => $osId,
+        ], REST_Controller::HTTP_CREATED);
+    }
+
+    /** @return array<string, mixed> */
+    protected function corpoJson(): array
+    {
+        $dados = json_decode((string) file_get_contents('php://input'), true);
+
+        return is_array($dados) ? $dados : [];
+    }
+
+    protected function agora(): int
+    {
+        return time();
     }
 
     /** Arquivo (ou miniatura com ?miniatura=1) de um anexo de uma OS do cliente autenticado. */

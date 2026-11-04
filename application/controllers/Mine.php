@@ -36,7 +36,7 @@ class Mine extends CI_Controller
     {
         $this->load->view('conecte/login', [
             'erro' => $this->session->flashdata('error'),
-            'sucesso' => $this->session->flashdata('success'),
+            'sucesso' => $this->session->flashdata('success') ?: ($this->input->get('saiu') === '1' ? 'Você saiu.' : null),
             // O atalho da listagem de clientes abre mine?e=<e-mail> com o campo preenchido.
             'email' => trim((string) $this->input->get('e')),
         ]);
@@ -44,8 +44,16 @@ class Mine extends CI_Controller
 
     public function sair()
     {
+        // Logout só por POST com CSRF (RF-27): GET não derruba a sessão.
+        if ($this->input->method() !== 'post') {
+            $this->output->set_status_header(405)->set_header('Allow: POST');
+
+            return;
+        }
+
         $this->session->sess_destroy();
-        redirect('mine');
+
+        return $this->irPara('mine?saiu=1');
     }
 
     // --- Recuperação de senha ---------------------------------------------
@@ -64,7 +72,7 @@ class Mine extends CI_Controller
     {
         $tokenEmClaro = (string) $this->input->post('token');
         if ($tokenEmClaro === '') {
-            return redirect('mine');
+            return $this->irPara('mine');
         }
 
         $token = $this->check_token($tokenEmClaro);
@@ -76,7 +84,7 @@ class Mine extends CI_Controller
             log_info('Alteração de senha. Porém, o token é inválido, expirado ou já utilizado.');
             $this->session->set_flashdata('error', 'Token inválido ou expirado. Solicite uma nova recuperação de senha.');
 
-            return redirect('mine');
+            return $this->irPara('mine');
         }
 
         $erros = $this->validarRegras([['field' => 'senha', 'label' => 'Senha', 'rules' => 'required|min_length[8]|max_length[72]']]);
@@ -89,17 +97,27 @@ class Mine extends CI_Controller
             return $this->load->view('conecte/nova_senha', ['token' => $tokenEmClaro, 'erros' => $erros]);
         }
 
-        $this->load->model('resetSenhas_model', '', true);
+        // O token é consumido por um UPDATE condicionado a token_utilizado = 0:
+        // de duas requisições simultâneas com o mesmo token, só uma passa daqui.
+        if (! $this->Conecte_model->consumirTokenDeReset((int) $token->id)) {
+            log_info('Alteração de senha. Porém, o token é inválido, expirado ou já utilizado.');
+            $this->session->set_flashdata('error', 'Token inválido ou expirado. Solicite uma nova recuperação de senha.');
+
+            return $this->irPara('mine');
+        }
+
+        $this->load->model('clientes_model');
         $senha = password_hash((string) $this->input->post('senha'), PASSWORD_DEFAULT);
-        if (! $this->Conecte_model->edit('clientes', ['senha' => $senha], 'idClientes', $cliente->idClientes)
-            || ! $this->resetSenhas_model->edit('resets_de_senha', ['token_utilizado' => true], 'id', $token->id)) {
-            return $this->load->view('conecte/nova_senha', ['token' => $tokenEmClaro, 'erros' => ['_geral' => 'Não foi possível salvar a senha. Tente de novo.']]);
+        if (! $this->clientes_model->registrarTrocaDeSenha((int) $cliente->idClientes, $senha, false)) {
+            $this->session->set_flashdata('error', 'Não foi possível salvar a senha. Solicite uma nova recuperação de senha.');
+
+            return $this->irPara('mine');
         }
 
         log_info('Alteração da senha realizada com sucesso.');
         $this->session->set_flashdata('success', 'Senha alterada. Entre com a senha nova.');
 
-        return redirect('mine?' . http_build_query(['e' => $cliente->email]));
+        return $this->irPara('mine?' . http_build_query(['e' => $cliente->email]));
     }
 
     public function tokenManual()
@@ -227,19 +245,19 @@ class Mine extends CI_Controller
         $this->form_validation->set_rules('email', 'E-mail', 'valid_email|required|trim');
         $this->form_validation->set_rules('senha', 'Senha', 'required|trim');
         if ($this->form_validation->run() == false) {
-            echo json_encode(['result' => false, 'message' => validation_errors()]);
+            $this->responderLogin(422, ['result' => false, 'message' => 'Confira os campos destacados.', 'erros' => $this->form_validation->error_array()]);
 
             return;
         }
 
-        $email = $this->input->post('email');
-        $password = $this->input->post('senha');
+        $email = (string) $this->input->post('email');
+        $password = (string) $this->input->post('senha');
         $ip = $this->input->ip_address();
 
         // Limite de tentativas (#2870): bloqueado, nem consulta a senha.
         $this->load->library('Limite_login');
         if ($this->limite_login->bloqueado('cliente', $email, $ip)) {
-            echo json_encode(['result' => false, 'message' => Limite_login::MENSAGEM, 'MAPOS_TOKEN' => $this->security->get_csrf_hash()]);
+            $this->responderLogin(429, ['result' => false, 'message' => Limite_login::MENSAGEM], max(1, $this->limite_login->segundosRestantes('cliente', $email, $ip)));
 
             return;
         }
@@ -248,10 +266,10 @@ class Mine extends CI_Controller
 
         // Mesma mensagem para e-mail inexistente e senha errada: mensagens
         // distintas revelam quais e-mails possuem cadastro.
-        $senhaConfere = senhaConfere((string) $password, $cliente->senha ?? null);
+        $senhaConfere = senhaConfere($password, $cliente->senha ?? null);
         if (! $cliente || ! $senhaConfere) {
             $this->limite_login->registrarFalha('cliente', $email, $ip);
-            echo json_encode(['result' => false, 'message' => 'Os dados de acesso estão incorretos.', 'MAPOS_TOKEN' => $this->security->get_csrf_hash()]);
+            $this->responderLogin(401, ['result' => false, 'message' => 'Os dados de acesso estão incorretos.']);
 
             return;
         }
@@ -268,6 +286,7 @@ class Mine extends CI_Controller
             'email' => $cliente->email,
             'conectado' => true,
             'isCliente' => true,
+            'cliente_sessao_versao' => (int) ($cliente->sessao_versao ?? 0),
         ]);
 
         $this->load->model('Audit_model');
@@ -279,7 +298,7 @@ class Mine extends CI_Controller
             'ip' => $ip,
         ]);
 
-        echo json_encode(['result' => true]);
+        $this->responderLogin(200, ['result' => true]);
     }
 
     // --- Telas do cliente logado ----------------------------------------------
@@ -308,6 +327,62 @@ class Mine extends CI_Controller
     }
 
     /**
+     * Primeiro acesso: o cliente criado pelo operador (senha_trocar = 1) só
+     * sai daqui depois de definir uma senha. Os demais clientes voltam ao painel.
+     */
+    public function definirSenha()
+    {
+        $idCliente = $this->clienteLogado(true);
+        $estado = $this->Conecte_model->estadoDaSessao($idCliente);
+        if ($estado === null || $estado['senha_trocar'] !== 1) {
+            return $this->irPara('mine/painel');
+        }
+
+        if ($this->input->method() !== 'post') {
+            return $this->load->view('conecte/definir_senha', ['erros' => []]);
+        }
+
+        $this->load->model('clientes_model');
+        $this->load->library('Limite_login');
+        $cliente = $this->Conecte_model->getDados();
+        $nova = (string) $this->input->post('senha');
+        $erros = [];
+
+        // A senha atual só é conferida com a nova válida: erro de campo não gasta tentativa.
+        $tamanho = mb_strlen($nova);
+        if ($tamanho < 8 || $tamanho > 72) {
+            $erros['senha'] = 'A senha deve ter de 8 a 72 caracteres.';
+        }
+        $confirmacao = conecteErroDaConfirmacao($this->input->post());
+        if ($confirmacao !== null) {
+            $erros['senha_confirmacao'] = $confirmacao;
+        }
+
+        if ($erros === []) {
+            $resultado = $this->limite_login->confirmarSenha((string) $cliente->email, $this->input->ip_address(), (string) $this->input->post('senha_atual'), (string) $cliente->senha);
+            if ($resultado === Limite_login::SENHA_BLOQUEADA) {
+                $erros['_geral'] = Limite_login::MENSAGEM;
+            } elseif ($resultado === Limite_login::SENHA_ERRADA) {
+                $erros['senha_atual'] = 'A senha atual não confere.';
+            } elseif (senhaConfere($nova, (string) $cliente->senha)) {
+                $erros['senha'] = 'A nova senha precisa ser diferente da atual.';
+            } elseif (! $this->clientes_model->registrarTrocaDeSenha($idCliente, password_hash($nova, PASSWORD_DEFAULT), false)) {
+                $erros['_geral'] = 'Não foi possível salvar. Tente novamente.';
+            }
+        }
+
+        if ($erros !== []) {
+            return $this->load->view('conecte/definir_senha', ['erros' => $erros]);
+        }
+
+        $this->guardarVersaoDaSessao($idCliente);
+        log_info('Cliente definiu a nova senha.');
+        $this->session->set_flashdata('success', 'Senha definida.');
+
+        return $this->irPara('mine/painel');
+    }
+
+    /**
      * "Meus dados" (#2851): POST comum; com erro, a tela volta com os valores
      * e o erro em cada campo; com sucesso, volta para a conta com o toast. O
      * cadastro alterado é sempre o da sessão.
@@ -333,11 +408,17 @@ class Mine extends CI_Controller
             }
 
             if ($erros === []) {
-                if ($this->Conecte_model->edit('clientes', $dados, 'idClientes', $idCliente)) {
+                // A senha nova não passa pelo edit(): registrarTrocaDeSenha também
+                // derruba as outras sessões e os refresh tokens do cliente.
+                $hash = $dados['senha'] ?? null;
+                unset($dados['senha']);
+
+                if ($this->Conecte_model->edit('clientes', $dados, 'idClientes', $idCliente)
+                    && ($hash === null || $this->trocarSenhaDaConta($idCliente, (string) $hash))) {
                     $this->session->set_userdata(['nome' => $dados['nomeCliente'], 'email' => $dados['email']]);
                     $this->session->set_flashdata('success', 'Seus dados foram salvos.');
 
-                    return redirect('mine/conta');
+                    return $this->irPara('mine/conta');
                 }
 
                 $erros['_geral'] = 'Não foi possível salvar. Tente de novo.';
@@ -462,7 +543,7 @@ class Mine extends CI_Controller
                 ['field' => 'observacoes', 'label' => 'Observações', 'rules' => 'trim|max_length[2000]'],
             ]);
 
-            $tecnico = $erros === [] ? $this->tecnicoParaNovaOs() : null;
+            $tecnico = $erros === [] ? $this->Conecte_model->tecnicoParaNovaOs() : null;
             if ($erros === [] && $tecnico === null) {
                 $erros['_geral'] = 'Não foi possível abrir a OS agora. Fale com a assistência.';
             }
@@ -471,7 +552,6 @@ class Mine extends CI_Controller
                 $texto = fn (string $campo) => osTextoParaGravar(is_string($this->input->post($campo)) ? $this->input->post($campo) : '');
                 $dados = [
                     'dataInicial' => date('Y-m-d'),
-                    'clientes_id' => $idCliente,
                     'usuarios_id' => $tecnico,
                     'dataFinal' => date('Y-m-d'),
                     'descricaoProduto' => $texto('descricaoProduto'),
@@ -481,25 +561,18 @@ class Mine extends CI_Controller
                     'faturado' => 0,
                 ];
 
-                $idOs = $this->Conecte_model->add('os', $dados, true);
-                if (is_numeric($idOs)) {
-                    $this->load->model('mapos_model');
-                    $this->load->model('usuarios_model');
-                    $this->load->model('os_model');
-
-                    // Histórico de status da OS (#2842); sem usuário = aberta pelo cliente.
-                    $this->os_model->registrarStatus((int) $idOs, null, 'Aberto', null);
-
-                    $remetentes = array_map(static fn ($usuario) => $usuario->email, $this->usuarios_model->getAll());
-                    $remetentes[] = (string) $this->session->userdata('email');
-
-                    $this->enviarOsPorEmail($idOs, $remetentes, 'Nova Ordem de Serviço #' . $idOs . ' - Criada pelo Cliente');
+                $resultado = $this->Conecte_model->abrirOsDoCliente($idCliente, $dados, clienteOsLimiteDiario());
+                if ($resultado['ok']) {
+                    $idOs = $resultado['id'];
+                    $this->notificarEquipeDaNovaOs($idOs);
                     $this->session->set_flashdata('success', 'OS #' . $idOs . ' aberta. A assistência vai entrar em contato.');
 
                     return redirect('mine/visualizarOs/' . $idOs);
                 }
 
-                $erros['_geral'] = 'Não foi possível abrir a OS. Tente de novo.';
+                $erros['_geral'] = $resultado['motivo'] === 'limite'
+                    ? Conecte_model::LIMITE_OS_MENSAGEM
+                    : 'Não foi possível abrir a OS. Tente de novo.';
             }
         }
 
@@ -507,6 +580,18 @@ class Mine extends CI_Controller
             'valores' => array_map(fn ($campo) => is_string($this->input->post($campo)) ? $this->input->post($campo) : '', ['descricaoProduto' => 'descricaoProduto', 'defeito' => 'defeito', 'observacoes' => 'observacoes']),
             'erros' => $erros,
         ]);
+    }
+
+    /** E-mail da nova OS para a equipe (e para o próprio cliente). */
+    protected function notificarEquipeDaNovaOs(int $idOs): void
+    {
+        $this->load->model('mapos_model');
+        $this->load->model('usuarios_model');
+
+        $remetentes = array_map(static fn ($usuario) => $usuario->email, $this->usuarios_model->getAll());
+        $remetentes[] = (string) $this->session->userdata('email');
+
+        $this->enviarOsPorEmail($idOs, $remetentes, 'Nova Ordem de Serviço #' . $idOs . ' - Criada pelo Cliente');
     }
 
     public function compras()
@@ -714,15 +799,118 @@ class Mine extends CI_Controller
     // --- Apoio ----------------------------------------------------------------
 
     /**
-     * Id do cliente da sessão; sem login, volta para a tela de entrada.
+     * Id do cliente da sessão, revalidada no banco a cada requisição: sem
+     * login, cliente excluído, falha na consulta (fail-closed) ou senha trocada
+     * em outro lugar encerram a sessão; com troca de senha pendente, só
+     * definirSenha() passa ($permitirTrocaPendente).
      */
-    private function clienteLogado(): int
+    private function clienteLogado(bool $permitirTrocaPendente = false): int
     {
+        $expirada = 'Sua sessão expirou. Entre novamente.';
         if (! session_id() || ! $this->session->userdata('conectado') || ! $this->session->userdata('cliente_id')) {
-            redirect('mine');
+            $this->encerrarSessaoDoCliente($expirada);
+
+            return 0;
         }
 
-        return (int) $this->session->userdata('cliente_id');
+        $id = (int) $this->session->userdata('cliente_id');
+        $estado = $this->Conecte_model->estadoDaSessao($id);
+        if ($estado === null) {
+            $this->encerrarSessaoDoCliente($expirada);
+
+            return 0;
+        }
+        if ($estado['sessao_versao'] !== (int) $this->session->userdata('cliente_sessao_versao')) {
+            $this->encerrarSessaoDoCliente('A senha desta conta foi alterada. Entre novamente.');
+
+            return 0;
+        }
+
+        if ($estado['senha_trocar'] === 1 && ! $permitirTrocaPendente) {
+            if ($this->input->is_ajax_request()) {
+                $this->responderJson(403, ['result' => false, 'message' => 'Defina uma nova senha antes de continuar.', 'redirect' => site_url('mine/definirSenha')]);
+            } else {
+                $this->irPara('mine/definirSenha');
+            }
+
+            return 0;
+        }
+
+        return $id;
+    }
+
+    /** Fecha a sessão do cliente com o motivo; AJAX recebe 401 JSON, o resto volta para a entrada. */
+    private function encerrarSessaoDoCliente(string $motivo): void
+    {
+        $this->session->unset_userdata(['nome', 'cliente_id', 'email', 'conectado', 'isCliente', 'cliente_sessao_versao']);
+        $this->session->sess_regenerate(true);
+        $this->session->set_flashdata('error', $motivo);
+
+        if ($this->input->is_ajax_request()) {
+            $this->responderJson(401, ['result' => false, 'message' => 'Sessão expirada', 'redirect' => site_url('mine')]);
+
+            return;
+        }
+
+        $this->irPara('mine');
+    }
+
+    /**
+     * Resposta do login em JSON com status HTTP (RF-29). Fora do 200 leva o
+     * token CSRF novo no campo de nome configurável (APP_CSRF_TOKEN_NAME).
+     */
+    private function responderLogin(int $status, array $corpo, ?int $retryAfter = null): void
+    {
+        if ($retryAfter !== null) {
+            $corpo['retry_after'] = $retryAfter;
+            $this->output->set_header('Retry-After: ' . $retryAfter);
+        }
+
+        if ($status !== 200) {
+            $corpo[$this->security->get_csrf_token_name()] = $this->security->get_csrf_hash();
+        }
+
+        $this->responderJson($status, $corpo);
+    }
+
+    private function responderJson(int $status, array $corpo): void
+    {
+        $this->output
+            ->set_status_header($status)
+            ->set_content_type('application/json', 'utf-8')
+            ->set_output(json_encode($corpo));
+        $this->output->_display();
+        $this->encerrar();
+    }
+
+    /** Troca a senha da conta (derruba as outras sessões) e mantém esta válida. */
+    private function trocarSenhaDaConta(int $idCliente, string $hash): bool
+    {
+        $this->load->model('clientes_model');
+        if (! $this->clientes_model->registrarTrocaDeSenha($idCliente, $hash, false)) {
+            return false;
+        }
+
+        $this->guardarVersaoDaSessao($idCliente);
+
+        return true;
+    }
+
+    /** Grava na sessão a versão que o banco tem agora, para a troca não derrubar quem a fez. */
+    private function guardarVersaoDaSessao(int $idCliente): void
+    {
+        $estado = $this->Conecte_model->estadoDaSessao($idCliente);
+        $this->session->set_userdata('cliente_sessao_versao', $estado['sessao_versao'] ?? 0);
+    }
+
+    protected function irPara(string $rota)
+    {
+        redirect($rota);
+    }
+
+    protected function encerrar()
+    {
+        exit;
     }
 
     /**
@@ -843,22 +1031,6 @@ class Mine extends CI_Controller
     private function configuracao(string $nome): string
     {
         return $this->configuracoes()[$nome] ?? '';
-    }
-
-    /**
-     * Técnico que recebe a OS aberta pelo cliente: o com menos OS; sem OS no
-     * sistema, o primeiro usuário ativo.
-     */
-    private function tecnicoParaNovaOs(): ?int
-    {
-        $usuario = $this->db->query('SELECT usuarios_id, count(*) as down FROM os GROUP BY usuarios_id ORDER BY down LIMIT 1')->row();
-        if ($usuario !== null && $usuario->usuarios_id) {
-            return (int) $usuario->usuarios_id;
-        }
-
-        $usuario = $this->db->where('situacao', 1)->limit(1)->get('usuarios')->row();
-
-        return $usuario ? (int) $usuario->idUsuarios : null;
     }
 
     private function validarCPF($cpf)

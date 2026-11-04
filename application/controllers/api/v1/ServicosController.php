@@ -4,7 +4,7 @@ if (! defined('BASEPATH')) {
     exit('No direct script access allowed');
 }
 
-require APPPATH . 'libraries/REST_Controller.php';
+require_once APPPATH . 'libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class ServicosController extends REST_Controller
 {
@@ -17,22 +17,14 @@ class ServicosController extends REST_Controller
 
     public function index_get($id = '')
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'vServico')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Serviços',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('vServico', 'Você não está autorizado a Visualizar Serviços');
 
         if (! $id) {
             $search = trim((string) $this->get('search', true));
 
-            $perPage = $this->get('perPage', true) ?: 20;
-            $page = $this->get('page', true) ?: 0;
-            $start = $page ? ($perPage * $page) : 0;
+            [$limite, $offset] = $this->paginacaoDaApi();
 
-            $servicos = $this->servicos_model->get('servicos', '*', $search, $perPage, $start);
+            $servicos = $this->servicos_model->get('servicos', '*', $search, $limite, $offset);
 
             $this->response([
                 'status' => true,
@@ -60,13 +52,7 @@ class ServicosController extends REST_Controller
 
     public function index_post()
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'aServico')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Adicionar Serviços!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('aServico', 'Você não está autorizado a Adicionar Serviços!');
 
         $_POST = (array) json_decode(file_get_contents('php://input'), true);
 
@@ -79,20 +65,13 @@ class ServicosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $preco = $this->post('preco', true);
-        $preco = str_replace(',', '', $preco);
-
-        $data = [
-            'nome' => $this->post('nome', true),
-            'descricao' => $this->post('descricao', true) ? $this->post('descricao', true) : '',
-            'preco' => $preco,
-        ];
+        $data = $this->dadosDoServico(fn (string $campo) => $this->post($campo, true));
 
         if ($this->servicos_model->add('servicos', $data)) {
             $this->response([
                 'status' => true,
                 'message' => 'Serviço adicionado com sucesso!',
-                'result' => $this->servicos_model->get('servicos', '*', "descricao = '{$data['descricao']}'", 1, 0, true),
+                'result' => $this->servicos_model->getById((int) $this->db->insert_id()),
             ], REST_Controller::HTTP_CREATED);
         }
 
@@ -104,13 +83,7 @@ class ServicosController extends REST_Controller
 
     public function index_put($id)
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'eServico')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Editar Serviços!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('eServico', 'Você não está autorizado a Editar Serviços!');
 
         if (! $id) {
             $this->response([
@@ -128,14 +101,7 @@ class ServicosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $preco = $this->put('preco', true);
-        $preco = str_replace(',', '', $preco);
-
-        $data = [
-            'nome' => $this->put('nome', true),
-            'descricao' => $this->put('descricao', true) ? $this->put('descricao', true) : '',
-            'preco' => $preco,
-        ];
+        $data = $this->dadosDoServico(fn (string $campo) => $this->put($campo, true));
 
         if ($this->servicos_model->edit('servicos', $data, 'idServicos', $id)) {
             $this->response([
@@ -153,13 +119,7 @@ class ServicosController extends REST_Controller
 
     public function index_delete($id)
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'dServico')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Apagar Serviços!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('dServico', 'Você não está autorizado a Apagar Serviços!');
 
         if (! $id) {
             $this->response([
@@ -168,9 +128,22 @@ class ServicosController extends REST_Controller
             ], REST_Controller::HTTP_BAD_REQUEST);
         }
 
-        $this->servicos_model->delete('servicos_os', 'servicos_id', $id);
+        $id = (int) $id;
+        if ($id <= 0) {
+            $this->response([
+                'status' => false,
+                'message' => 'Informe o ID do Serviço!',
+            ], REST_Controller::HTTP_BAD_REQUEST);
+        }
 
-        if ($this->servicos_model->delete('servicos', 'idServicos', $id)) {
+        if (! $this->servicos_model->getById($id)) {
+            $this->response([
+                'status' => false,
+                'message' => 'Serviço não encontrado.',
+            ], REST_Controller::HTTP_NOT_FOUND);
+        }
+
+        if ($this->servicos_model->excluirComDependentes($id)) {
             $this->log_app('Removeu um Serviço. ID' . $id);
             $this->response([
                 'status' => true,
@@ -180,7 +153,23 @@ class ServicosController extends REST_Controller
 
         $this->response([
             'status' => false,
-            'message' => 'Não foi possível excluir o Serviço. Avise ao Administrador.',
+            'message' => 'Não foi possível excluir. Nada foi alterado.',
         ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Allow-list de colunas do serviço, igual no POST e no PUT: o id e o que
+     * mais vier no corpo nunca chegam ao banco. $campo lê o corpo da requisição.
+     *
+     * @param  callable(string): mixed  $campo
+     * @return array<string, mixed>
+     */
+    private function dadosDoServico(callable $campo): array
+    {
+        return [
+            'nome' => $campo('nome'),
+            'descricao' => $campo('descricao') ?: '',
+            'preco' => str_replace(',', '', (string) ($campo('preco') ?? '')),
+        ];
     }
 }

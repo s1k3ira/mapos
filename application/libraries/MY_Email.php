@@ -18,19 +18,19 @@ defined('BASEPATH') or exit('No direct script access allowed');
  */
 class MY_Email extends CI_Email
 {
+    public const MAX_TENTATIVAS = 5;
+
+    public const LOTE = 50;
+
+    public const RESERVA_EXPIRA_MINUTOS = 15;
+
+    public const NOME_DO_LOCK = 'mapos_email_fila';
+
     /** @var object Instância do CodeIgniter, injetada por get_instance() no construtor */
     protected $CI;
 
     // DB table
     private $table_email_queue = 'email_queue';
-
-    // Main controller
-    private $main_controller = 'email/process';
-
-    // PHP Nohup command line
-    private $phpcli = 'nohup php';
-
-    private $expiration = null;
 
     // Status (pending, sending, sent, failed)
     private $status;
@@ -44,7 +44,6 @@ class MY_Email extends CI_Email
 
         log_message('debug', 'Email Queue Class Initialized');
 
-        $this->expiration = 60 * 5;
         $this->CI = &get_instance();
 
         $this->CI->load->database('default');
@@ -108,84 +107,136 @@ class MY_Email extends CI_Email
     }
 
     /**
-     * Start process
+     * Envia um lote da fila. Só uma execução por vez (GET_LOCK); cada e-mail é
+     * reservado de forma atômica e conta uma tentativa ao ser reservado.
      *
-     * Start php process to send emails
+     * @return array{ignorado: bool, reservados: int, enviados: int, falhas: int, definitivos: int}
      *
-     * @return mixed
+     * @throws RuntimeException erro de banco
      */
-    public function start_process()
+    public function processarFila(): array
     {
-        $filename = FCPATH . 'index.php';
-        $exec = shell_exec("{$this->phpcli} {$filename} {$this->main_controller} > /dev/null &");
+        $resultado = ['ignorado' => false, 'reservados' => 0, 'enviados' => 0, 'falhas' => 0, 'definitivos' => 0];
 
-        return $exec;
-    }
+        if (! $this->obterLock()) {
+            $resultado['ignorado'] = true;
 
-    /**
-     * Send queue
-     *
-     * Send queue emails.
-     *
-     * @return void
-     */
-    public function send_queue()
-    {
-        $this->set_status('pending');
-        $emails = $this->get();
+            return $resultado;
+        }
 
-        $this->CI->db->where('status', 'pending');
-        $this->CI->db->set('status', 'sending');
-        $this->CI->db->set('date', date('Y-m-d H:i:s'));
-        $this->CI->db->update($this->table_email_queue);
+        try {
+            $reserva = bin2hex(random_bytes(16));
+            $agora = date('Y-m-d H:i:s', $this->agora());
+            $ok = $this->CI->db->query(
+                'UPDATE email_queue SET status = ?, reservado_por = ?, reservado_em = ?, tentativas = tentativas + 1'
+                . ' WHERE status = ? AND tentativas < ? AND id IN (SELECT id FROM (SELECT id FROM email_queue WHERE status = ? AND tentativas < ? ORDER BY id LIMIT ' . self::LOTE . ') AS lote)',
+                ['sending', $reserva, $agora, 'pending', self::MAX_TENTATIVAS, 'pending', self::MAX_TENTATIVAS]
+            );
 
-        foreach ($emails as $email) {
-            $recipients = explode(', ', $email->to);
-
-            $cc = ! empty($email->cc) ? explode(', ', $email->cc) : [];
-            $bcc = ! empty($email->bcc) ? explode(', ', $email->bcc) : [];
-
-            $this->_headers = json_decode_legacy($email->headers);
-
-            $this->to($recipients);
-            $this->cc($cc);
-            $this->bcc($bcc);
-
-            $this->message($email->message);
-
-            if ($this->send(true)) {
-                $status = 'sent';
-            } else {
-                log_message('error', $this->print_debugger());
-                $status = 'failed';
+            if ($ok === false) {
+                throw new RuntimeException('email_fila: falha ao reservar');
             }
 
-            $this->CI->db->where('id', $email->id);
+            $emails = $this->CI->db->where('reservado_por', $reserva)->where('status', 'sending')->order_by('id')->get($this->table_email_queue)->result();
+            $resultado['reservados'] = count($emails);
 
-            $this->CI->db->set('status', $status);
-            $this->CI->db->set('date', date('Y-m-d H:i:s'));
-            $this->CI->db->update($this->table_email_queue);
+            foreach ($emails as $email) {
+                try {
+                    $enviado = $this->enviarDaFila($email);
+                } catch (\Throwable $e) {
+                    $enviado = false;
+                }
+
+                if ($enviado) {
+                    $resultado['enviados']++;
+                } else {
+                    $resultado['falhas']++;
+
+                    if ((int) $email->tentativas >= self::MAX_TENTATIVAS) {
+                        $resultado['definitivos']++;
+                    }
+
+                    log_message('error', sprintf('email_fila falha id=%d tentativas=%d %s', (int) $email->id, (int) $email->tentativas, trim($this->print_debugger(['headers']))));
+                }
+
+                $this->CI->db->where('id', $email->id)->where('reservado_por', $reserva)->update($this->table_email_queue, [
+                    'status' => $enviado ? 'sent' : 'failed',
+                    'date' => date('Y-m-d H:i:s', $this->agora()),
+                ]);
+            }
+        } finally {
+            $this->liberarLock();
         }
+
+        return $resultado;
     }
 
     /**
-     * Retry failed emails
+     * Reabre para nova tentativa os e-mails com falha e as reservas expiradas.
      *
-     * Resend failed or expired emails
+     * @return array{reabertos: int, definitivos: int}
      *
-     * @return void
+     * @throws RuntimeException erro de banco
      */
-    public function retry_queue()
+    public function reabrirFila(): array
     {
-        $expire = (time() - $this->expiration);
-        $date_expire = date('Y-m-d H:i:s', $expire);
+        $limite = date('Y-m-d H:i:s', $this->agora() - self::RESERVA_EXPIRA_MINUTOS * 60);
+        $expirado = ' WHERE status = ? AND (reservado_em < ? OR (reservado_em IS NULL AND date < ?))';
 
-        $this->CI->db->set('status', 'pending');
-        $this->CI->db->where("(date < '{$date_expire}' AND status = 'sending')");
-        $this->CI->db->or_where("status = 'failed'");
+        $falhos = $this->atualizarFila('UPDATE email_queue SET status = ? WHERE status = ? AND tentativas < ?', ['pending', 'failed', self::MAX_TENTATIVAS]);
+        $expirados = $this->atualizarFila(
+            'UPDATE email_queue SET status = ?, reservado_por = NULL, reservado_em = NULL' . $expirado . ' AND tentativas < ?',
+            ['pending', 'sending', $limite, $limite, self::MAX_TENTATIVAS]
+        );
+        $definitivos = $this->atualizarFila(
+            'UPDATE email_queue SET status = ?' . $expirado . ' AND tentativas >= ?',
+            ['failed', 'sending', $limite, $limite, self::MAX_TENTATIVAS]
+        );
 
-        $this->CI->db->update($this->table_email_queue);
+        return ['reabertos' => $falhos + $expirados, 'definitivos' => $definitivos];
+    }
 
-        log_message('debug', 'Email queue retrying...');
+    protected function obterLock(): bool
+    {
+        $linha = $this->CI->db->query('SELECT GET_LOCK(?, 0) AS ok', [self::NOME_DO_LOCK])->row();
+
+        return $linha !== null && (int) $linha->ok === 1;
+    }
+
+    protected function liberarLock(): void
+    {
+        $this->CI->db->query('SELECT RELEASE_LOCK(?)', [self::NOME_DO_LOCK]);
+    }
+
+    protected function enviarDaFila(object $email): bool
+    {
+        $this->clear(true);
+
+        $this->to(explode(', ', $email->to));
+        $this->cc(! empty($email->cc) ? explode(', ', $email->cc) : []);
+        $this->bcc(! empty($email->bcc) ? explode(', ', $email->bcc) : []);
+        $this->message($email->message);
+        $this->_headers = json_decode_legacy($email->headers);
+
+        return (bool) $this->send(true);
+    }
+
+    protected function agora(): int
+    {
+        return time();
+    }
+
+    /**
+     * @param list<string|int> $binds
+     *
+     * @throws RuntimeException
+     */
+    private function atualizarFila(string $sql, array $binds): int
+    {
+        if ($this->CI->db->query($sql, $binds) === false) {
+            throw new RuntimeException('email_fila: falha ao atualizar');
+        }
+
+        return (int) $this->CI->db->affected_rows();
     }
 }

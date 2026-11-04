@@ -7,8 +7,9 @@ dos tokens da API: se o servidor entregar esse arquivo, quem o baixar controla
 a instalação.
 
 O `.htaccess` que acompanha o Map-OS já cobre o **Apache** (com
-`AllowOverride All`); o `docker/etc/nginx/default.conf` cobre o **nginx** do
-Docker. Em qualquer outro servidor (Caddy, FrankenPHP, nginx próprio, Apache com
+`AllowOverride All`). Para o **nginx** do Docker, a fonte é
+`docker/etc/nginx/default.template.conf`; o compose gera o `default.conf` a
+partir dele ao subir, então mudanças vão no template. Em qualquer outro servidor (Caddy, FrankenPHP, nginx próprio, Apache com
 `AllowOverride None`) é preciso aplicar as regras abaixo.
 
 ## O que bloquear
@@ -95,6 +96,26 @@ um caminho de instalação com um componente começando por ponto (por exemplo
 A receita foi conferida num Apache 2.4 real, com a instalação num caminho normal e
 num caminho com `.local`: `.git/`, `.github/`, `assets/.qualquer/`, `application/` e
 `docs/` dão 403, e `index.php`, `assets/` e `.well-known/` continuam liberados.
+
+## Pastas de armazenamento (.htaccess)
+
+O Map-OS grava um `.htaccess` em `STORAGE_PATH` e na pasta pública de upload para negar o acesso direto. O bloco cobre o Apache 2.4 e, como fallback, o 2.2:
+
+```apache
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+```
+
+Um `.htaccess` antigo, sem `mod_authz_core`, é regravado sozinho. Se a gravação falhar (permissão da pasta, por exemplo), o log do Map-OS registra `armazenamento falha operacao=gravar`.
+
+## Webhooks de pagamento
+
+As rotas `webhooks/*` precisam continuar chegando ao `index.php` por `POST`, sem bloqueio nem autenticação do servidor: quem autentica é o próprio Map-OS. O caminho da Efí (`webhooks/efi/<segredo>`) deve ficar fora do access log. As receitas de nginx e Apache estão em [webhooks-de-pagamento.md](webhooks-de-pagamento.md).
 
 ## Arquivo de relatórios da CSP
 

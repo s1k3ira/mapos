@@ -1,10 +1,53 @@
 <?php
 
+require_once __DIR__ . '/../libraries/Refresh_token.php';
+
 class Clientes_model extends CI_Model
 {
     public function __construct()
     {
         parent::__construct();
+    }
+
+    /**
+     * Troca a senha do cliente e derruba sessão web, access tokens e refresh
+     * tokens dele, tudo numa transação. False = nada mudou.
+     */
+    public function registrarTrocaDeSenha(int $idCliente, string $hash, bool $exigirTroca): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->set('senha', $hash)
+                ->set('senha_trocar', $exigirTroca ? 1 : 0)
+                ->set('sessao_versao', 'sessao_versao + 1', false)
+                ->set('token_versao', 'token_versao + 1', false)
+                ->where('idClientes', $idCliente)
+                ->update('clientes');
+            $alterou = $this->db->affected_rows() === 1;
+
+            if ($alterou) {
+                $this->refreshTokens()->revogarDoUsuario($idCliente, 'cliente');
+            }
+
+            if ($alterou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // Com db_debug ligado o CI já desfez a transação antes de lançar; o rollback abaixo vira no-op.
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=troca_senha_cliente id=%d', $idCliente));
+
+        return false;
+    }
+
+    protected function refreshTokens(): Refresh_token
+    {
+        return new Refresh_token(['db' => $this->db]);
     }
 
     public function get($table, $fields, $where = '', $perpage = 0, $start = 0, $one = false, $array = 'array')
@@ -173,6 +216,112 @@ class Clientes_model extends CI_Model
     }
 
     /**
+     * Marca senha_trocar = 1 nos clientes cuja senha ainda é o próprio
+     * CPF/CNPJ sem pontuação (senha padrão do cadastro antigo). Devolve a
+     * quantidade marcada ou false se o banco falhar. Custa um bcrypt por
+     * cliente com documento e senha: demora em bases grandes.
+     */
+    public function marcarSenhasLegadas(int $lote = 500): int|false
+    {
+        $ultimoId = 0;
+        $total = 0;
+
+        while (true) {
+            $consulta = $this->db->select('idClientes, documento, senha')
+                ->where('idClientes >', $ultimoId)
+                ->where('senha_trocar', 0)
+                ->order_by('idClientes')
+                ->limit($lote)
+                ->get('clientes');
+
+            if ($consulta === false) {
+                log_message('error', 'cliente marcar_senhas_legadas falha');
+
+                return false;
+            }
+
+            $linhas = $consulta->result();
+            if ($linhas === []) {
+                return $total;
+            }
+
+            $ids = [];
+            foreach ($linhas as $linha) {
+                $ultimoId = (int) $linha->idClientes;
+                $documento = (string) preg_replace('/[^A-Za-z0-9]/', '', (string) $linha->documento);
+                if ($documento === '' || (string) $linha->senha === '') {
+                    continue;
+                }
+                if (password_verify($documento, (string) $linha->senha)) {
+                    $ids[] = $ultimoId;
+                }
+            }
+
+            if ($ids === []) {
+                continue;
+            }
+
+            $atualizou = $this->db->where_in('idClientes', $ids)->where('senha_trocar', 0)->update('clientes', ['senha_trocar' => 1]);
+            if ($atualizou === false) {
+                log_message('error', 'cliente marcar_senhas_legadas falha');
+
+                return false;
+            }
+            $total += (int) $this->db->affected_rows();
+        }
+    }
+
+    /**
+     * Exclui o cliente e o que é dele (OS, itens, vendas) numa transação e
+     * revoga os refresh tokens dele. false = nada mudou (inclusive cliente
+     * inexistente). Anexos, equipamentos, cobranças e lançamentos não são
+     * apagados aqui: no MySQL as FKs fazem o DELETE falhar e tudo é desfeito.
+     */
+    public function excluirComDependentes(int $idCliente): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $ids = array_column($this->db->select('idOs')->where('clientes_id', $idCliente)->get('os')->result_array(), 'idOs');
+            if ($ids !== []) {
+                foreach (['servicos_os', 'produtos_os', 'anotacoes_os', 'os_historico'] as $tabela) {
+                    if (in_array($tabela, ['anotacoes_os', 'os_historico'], true) && ! $this->db->table_exists($tabela)) {
+                        continue;
+                    }
+                    $this->db->where_in('os_id', $ids)->delete($tabela);
+                }
+                $this->db->where('clientes_id', $idCliente)->delete('os');
+            }
+
+            $vendas = array_column($this->db->select('idVendas')->where('clientes_id', $idCliente)->get('vendas')->result_array(), 'idVendas');
+            if ($vendas !== []) {
+                $this->db->where_in('vendas_id', $vendas)->delete('itens_de_vendas');
+                $this->db->where('clientes_id', $idCliente)->delete('vendas');
+            }
+
+            $this->db->where('idClientes', $idCliente)->delete('clientes');
+            $apagou = $this->db->affected_rows() === 1;
+
+            if ($apagou) {
+                $this->refreshTokens()->revogarDoUsuario($idCliente, 'cliente');
+            }
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_cliente id=%d', $idCliente));
+
+        return false;
+    }
+
+    /**
      * Remover todas as OS por cliente
      *
      * @param  array  $os
@@ -180,19 +329,14 @@ class Clientes_model extends CI_Model
      */
     public function removeClientOs($os)
     {
-        try {
-            foreach ($os as $o) {
-                $this->db->where('os_id', $o->idOs);
-                $this->db->delete('servicos_os');
+        foreach ($os as $o) {
+            foreach (['servicos_os' => 'os_id', 'produtos_os' => 'os_id', 'os' => 'idOs'] as $tabela => $campo) {
+                if ($this->db->where($campo, $o->idOs)->delete($tabela) === false) {
+                    log_message('error', sprintf('cliente remover_os falha os=%d', (int) $o->idOs));
 
-                $this->db->where('os_id', $o->idOs);
-                $this->db->delete('produtos_os');
-
-                $this->db->where('idOs', $o->idOs);
-                $this->db->delete('os');
+                    return false;
+                }
             }
-        } catch (Exception $e) {
-            return false;
         }
 
         return true;
@@ -219,16 +363,14 @@ class Clientes_model extends CI_Model
      */
     public function removeClientVendas($vendas)
     {
-        try {
-            foreach ($vendas as $v) {
-                $this->db->where('vendas_id', $v->idVendas);
-                $this->db->delete('itens_de_vendas');
+        foreach ($vendas as $v) {
+            foreach (['itens_de_vendas' => 'vendas_id', 'vendas' => 'idVendas'] as $tabela => $campo) {
+                if ($this->db->where($campo, $v->idVendas)->delete($tabela) === false) {
+                    log_message('error', sprintf('cliente remover_venda falha venda=%d', (int) $v->idVendas));
 
-                $this->db->where('idVendas', $v->idVendas);
-                $this->db->delete('vendas');
+                    return false;
+                }
             }
-        } catch (Exception $e) {
-            return false;
         }
 
         return true;

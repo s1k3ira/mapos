@@ -26,7 +26,7 @@ class Cobrancas extends MY_Controller
             return $this->output
                 ->set_content_type('application/json')
                 ->set_status_header(403)
-                ->set_output(json_encode(['message' => 'Você não tem permissão para adicionar cobrança!']));
+                ->set_output(json_encode(['result' => false, 'message' => 'Você não tem permissão para adicionar cobrança!']));
         }
 
         $this->load->library('form_validation');
@@ -34,7 +34,7 @@ class Cobrancas extends MY_Controller
             return $this->output
                 ->set_content_type('application/json')
                 ->set_status_header(400)
-                ->set_output(json_encode(['message' => validation_errors()]));
+                ->set_output(json_encode(['result' => false, 'message' => validation_errors()]));
         } else {
             $id = $this->input->post('id');
             $tipo = $this->input->post('tipo');
@@ -50,7 +50,7 @@ class Cobrancas extends MY_Controller
                 return $this->output
                     ->set_content_type('application/json')
                     ->set_status_header(400)
-                    ->set_output(json_encode(['message' => 'Já existe cobrança!']));
+                    ->set_output(json_encode(['result' => false, 'message' => 'Já existe cobrança!']));
             }
 
             $this->load->config('payment_gateways');
@@ -58,7 +58,7 @@ class Cobrancas extends MY_Controller
                 return $this->output
                     ->set_content_type('application/json')
                     ->set_status_header(400)
-                    ->set_output(json_encode(['message' => 'Gateway de pagamento inválido.']));
+                    ->set_output(json_encode(['result' => false, 'message' => 'Gateway de pagamento inválido.']));
             }
 
             $this->load->library("Gateways/$gatewayDePagamento", null, 'PaymentGateway');
@@ -74,16 +74,13 @@ class Cobrancas extends MY_Controller
                     ->set_content_type('application/json')
                     ->set_status_header(200)
                     ->set_output(json_encode($cobranca));
-            } catch (\Exception $e) {
-                $expMsg = $e->getMessage();
-                if ($expMsg == 'unauthorized: Must provide your access_token to proceed' || $expMsg == 'Unauthorized') {
-                    $expMsg = 'Por favor configurar os dados da API em Config/payment_gatways.php';
-                }
+            } catch (\Throwable $e) {
+                [$status, $mensagem] = cobrancaRespostaDeFalha($e, 'Não foi possível gerar a cobrança. Tente novamente.');
 
                 return $this->output
                     ->set_content_type('application/json')
-                    ->set_status_header(500)
-                    ->set_output(json_encode(['message' => $expMsg]));
+                    ->set_status_header($status)
+                    ->set_output(json_encode(['result' => false, 'message' => $mensagem]));
             }
         }
     }
@@ -188,8 +185,8 @@ class Cobrancas extends MY_Controller
         try {
             $this->cobrancas_model->{$metodo}($id);
             $this->session->set_flashdata('success', $sucesso);
-        } catch (Exception $e) {
-            $this->session->set_flashdata('error', $e->getMessage() !== '' ? $e->getMessage() : $erro);
+        } catch (\Throwable $e) {
+            $this->session->set_flashdata('error', cobrancaRespostaDeFalha($e, $erro)[1]);
         }
 
         redirect($destino);
@@ -220,17 +217,18 @@ class Cobrancas extends MY_Controller
 
         try {
             $this->cobrancas_model->cancelarPagamento($id);
+        } catch (\Throwable $e) {
+            $this->session->set_flashdata('error', cobrancaRespostaDeFalha($e, 'Não foi possível cancelar a cobrança no provedor. Nada foi excluído.')[1]);
+            redirect($destino);
+        }
 
-            if ($this->cobrancas_model->delete('cobrancas', 'idCobranca', $id) == true) {
-                log_info('Removeu uma cobrança. ID' . $id);
-                $this->session->set_flashdata('success', 'Cobrança excluída.');
-                // O detalhe da cobrança excluída não existe mais.
-                $destino = site_url('cobrancas/cobrancas') . listagemQuery($this->filtrosDaListagem());
-            } else {
-                $this->session->set_flashdata('error', 'Não foi possível excluir a cobrança.');
-            }
-        } catch (Exception $e) {
-            $this->session->set_flashdata('error', $e->getMessage());
+        if ($this->cobrancas_model->excluirEmTransacao($id)) {
+            log_info('Removeu uma cobrança. ID' . $id);
+            $this->session->set_flashdata('success', 'Cobrança excluída.');
+            // O detalhe da cobrança excluída não existe mais.
+            $destino = site_url('cobrancas/cobrancas') . listagemQuery($this->filtrosDaListagem());
+        } else {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
         }
 
         redirect($destino);

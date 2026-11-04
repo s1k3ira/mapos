@@ -236,7 +236,7 @@ final class VendasListagemTest extends MaposTestCase
         $this->assertStringContainsString("'Nova venda'", $gerenciar[0]);
         $this->assertStringContainsString('->contar($filtros)', $gerenciar[0], 'O total conta com os mesmos filtros da listagem.');
         $this->assertNotEmpty($excluir);
-        $this->assertStringContainsString('excluirFatura(', $excluir[0]);
+        $this->assertStringContainsString('excluirComDependentes(', $excluir[0]);
         $this->assertStringContainsString('listagemQuery(', $excluir[0]);
         $this->assertStringNotContainsString('${', $excluir[0]);
 

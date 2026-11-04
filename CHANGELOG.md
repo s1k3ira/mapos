@@ -6,6 +6,43 @@ e [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Fecha a revisão de segurança. Tem migrations (5) e variáveis novas no `.env` (veja [docs/migracao-4x-para-5.md](docs/migracao-4x-para-5.md)). Quem usa a API deve ler as linhas **Breaking** abaixo.
+
+### Security
+- Webhooks de pagamento (Efí, Mercado Pago e Asaas) autenticados, que nunca confiam no corpo: o pagamento é reconsultado no gateway, o valor é conferido e cada evento é idempotente.
+- Cliente criado pelo operador recebe senha inicial aleatória e troca a senha no primeiro acesso.
+- O token da área do cliente dura no máximo 1 hora, com refresh token, e a sessão do cliente é revalidada a cada requisição.
+- Limite diário de abertura de OS pelo cliente (`CLIENTE_OS_LIMITE_DIARIO`).
+- Fila de e-mail com lock (`GET_LOCK`) e reserva por processo, sem envio duplicado.
+- `.htaccess` das pastas de armazenamento compatível com o Apache 2.4 (`Require all denied`), com fallback para o 2.2.
+- Seed de dados só em `development`.
+- Logs sem segredos: o caminho do webhook da Efí, o payload e os dados do pagador não são registrados.
+
+### Changed
+- **Breaking:** API: a falta de permissão passa de `401` para `403`.
+- **Breaking:** API: token ausente, inválido, expirado, de outro tipo ou de conta ou grupo desativado passa de `403` para `401`.
+- **Breaking:** o login do painel e o da área do cliente respondem por status HTTP (200, 401, 403, 422 e 429), e o token CSRF novo vem no campo de nome configurado, não mais em `MAPOS_TOKEN`.
+- **Breaking:** o logout (`login/sair` e `mine/sair`) só funciona por POST com CSRF; GET responde `405`.
+- **Breaking:** API do cliente: o access token dura no máximo 1 hora e exige refresh token (`POST /api/v1/client/refresh`); tokens antigos, sem `sid`, deixam de valer.
+- **Breaking:** listagens da API: `perPage` tem teto de 100, e `perPage` ou `page` inválidos respondem `422`.
+- **Breaking:** `POST /api/v1/client/os` tem limite diário de aberturas (`CLIENTE_OS_LIMITE_DIARIO`, padrão 10), com `429` e `Retry-After`.
+- O timeout padrão da Efí caiu de 30 para 10 segundos; Mercado Pago e Asaas também têm timeout configurável (`PAYMENT_GATEWAYS_*_TIMEOUT`).
+
+### Added
+- Webhooks de pagamento (`/webhooks/efi/<segredo>`, `/webhooks/mercadopago` e `/webhooks/asaas`), com `EFI_WEBHOOK_SECRET`, `MP_WEBHOOK_SECRET`, `ASAAS_WEBHOOK_TOKEN` e `WEBHOOK_RATE_LIMIT`.
+- API do cliente: `POST /api/v1/client/refresh`, `client/logout` e `PUT /api/v1/client/password`.
+- `php index.php tools marcarSenhasLegadas`, que obriga a troca de senha de quem ainda usa o documento como senha.
+- `scripts/smoke-seguranca.sh`, o smoke de segurança no Docker.
+- `docs/webhooks-de-pagamento.md`.
+
+### Fixed
+- Exclusões em transação não respondem mais sucesso falso quando falham.
+- Erro não tratado na API responde `500` em JSON.
+- `GET /api/v1/calendario` devolve os eventos.
+- QR code da compra do cliente.
+- Sessão expirada em requisições AJAX.
+- Timeouts dos gateways de pagamento.
+
 ## [5.3.0] - 2026-11-03
 
 Painel com abas de status e gráfico de OS por mês. Sem migration e sem variável nova no `.env`. Na primeira vez depois de atualizar, recarregue o painel com Ctrl+F5.

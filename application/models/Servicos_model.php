@@ -92,6 +92,34 @@ class Servicos_model extends CI_Model
         return false;
     }
 
+    /**
+     * Apaga o serviço e as linhas dele em servicos_os numa transação: tudo ou nada.
+     * Devolve false (e não altera nada) se o registro não existe ou o banco falha.
+     */
+    public function excluirComDependentes(int $idServico): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->where('servicos_id', $idServico)->delete('servicos_os');
+            $this->db->where('idServicos', $idServico)->delete('servicos');
+            $apagou = $this->db->affected_rows() === 1;
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_servico id=%d', $idServico));
+
+        return false;
+    }
+
     public function count($table)
     {
         return $this->db->count_all($table);

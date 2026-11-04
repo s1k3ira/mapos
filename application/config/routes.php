@@ -45,6 +45,11 @@ if (! defined('BASEPATH')) {
 $route['default_controller'] = 'mapos';
 $route['404_override'] = '';
 
+// Webhooks de pagamento: públicos, fora da API e do CSRF (ver docs/webhooks-de-pagamento.md).
+$route['webhooks/efi/(:any)'] = 'webhooks/efi/$1';
+$route['webhooks/mercadopago'] = 'webhooks/mercadopago';
+$route['webhooks/asaas'] = 'webhooks/asaas';
+
 // Rotas da API
 if (filter_var($_ENV['API_ENABLED'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
     require APPPATH . 'config/routes_api.php';

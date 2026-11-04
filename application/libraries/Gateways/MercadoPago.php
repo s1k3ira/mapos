@@ -2,9 +2,11 @@
 
 use Libraries\Gateways\BasePaymentGateway;
 use Libraries\Gateways\Contracts\PaymentGateway;
+use Libraries\Gateways\Exceptions\GatewayIndisponivelException;
+use Libraries\Gateways\Exceptions\GatewayRecusouException;
+use Libraries\Gateways\MercadoPagoHttpClient;
 use MercadoPago\Client\Payment\PaymentClient;
 use MercadoPago\Exceptions\MPApiException;
-use MercadoPago\Exceptions\MPException;
 use MercadoPago\MercadoPagoConfig;
 
 class MercadoPago extends BasePaymentGateway
@@ -24,6 +26,62 @@ class MercadoPago extends BasePaymentGateway
         $this->mercadoPagoConfig = $this->ci->config->item('payment_gateways')['MercadoPago'];
 
         MercadoPagoConfig::setAccessToken($this->mercadoPagoConfig['credentials']['access_token']);
+        $this->configurarTimeout((int) ($this->mercadoPagoConfig['timeout'] ?? 10));
+    }
+
+    protected function configurarTimeout(int $segundos): void
+    {
+        MercadoPagoConfig::setConnectionTimeout($segundos * 1000);
+        MercadoPagoConfig::setHttpClient(new MercadoPagoHttpClient($segundos));
+    }
+
+    protected function nomeDoGateway(): string
+    {
+        return 'MercadoPago';
+    }
+
+    protected function codigoHttp(\Throwable $e): ?int
+    {
+        return $e instanceof MPApiException ? $e->getStatusCode() : null;
+    }
+
+    protected function traduzirFalha(\Throwable $e, string $operacao): \RuntimeException
+    {
+        if ($e instanceof MPApiException) {
+            $status = $e->getStatusCode();
+            if ($status >= 400 && $status < 500 && ! in_array($status, [401, 403, 429], true)) {
+                return new GatewayRecusouException($this->mpErrorMessage($e, $operacao), $e);
+            }
+        }
+
+        return new GatewayIndisponivelException(GatewayIndisponivelException::MENSAGEM, $e);
+    }
+
+    /**
+     * Reconsulta o pagamento no provedor (webhook): só o retorno da consulta é confiável.
+     *
+     * @return array{charge_id: string, status: string, valor_centavos: int}
+     *
+     * @throws GatewayRecusouException|GatewayIndisponivelException
+     */
+    public function consultarPagamento(string $idExterno): array
+    {
+        if (! ctype_digit($idExterno)) {
+            throw new GatewayRecusouException('Pagamento não encontrado no Mercado Pago.');
+        }
+
+        $pagamento = $this->chamarGateway('consultar_webhook', null, fn () => $this->buscarPagamentoMp((int) $idExterno));
+
+        return [
+            'charge_id' => (string) $pagamento->id,
+            'status' => (string) $pagamento->status,
+            'valor_centavos' => (int) round(((float) $pagamento->transaction_amount) * 100),
+        ];
+    }
+
+    protected function buscarPagamentoMp(int $id): object
+    {
+        return (new PaymentClient())->get($id);
     }
 
     public function cancelar($id)
@@ -33,12 +91,7 @@ class MercadoPago extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        try {
-            $client = new PaymentClient();
-            $payment = $client->cancel($cobranca->charge_id);
-        } catch (\Exception $e) {
-            throw new \Exception($e->getMessage());
-        }
+        $this->chamarGateway('cancelar', $id, fn () => (new PaymentClient())->cancel($cobranca->charge_id));
 
         return $this->atualizarDados($id);
     }
@@ -97,12 +150,7 @@ class MercadoPago extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        try {
-            $client = new PaymentClient();
-            $payment = $client->get($cobranca->charge_id);
-        } catch (MPApiException | MPException $e) {
-            throw new \Exception($this->mpErrorMessage($e));
-        }
+        $payment = $this->chamarGateway('atualizar', $id, fn () => (new PaymentClient())->get($cobranca->charge_id));
 
         $this->ci->cobrancas_model->edit(
             'cobrancas',
@@ -115,31 +163,18 @@ class MercadoPago extends BasePaymentGateway
         log_info('Atualizou cobrança Mercado Pago. ID: ' . $id);
     }
 
-    private function mpErrorMessage(\Exception $e): string
+    /** Só textos nossos: a mensagem do provedor pode conter dado do pagador. */
+    private function mpErrorMessage(\Throwable $e, string $operacao): string
     {
-        if ($e instanceof \MercadoPago\Exceptions\MPApiException) {
-            $content = $e->getApiResponse()->getContent();
-
-            if (is_object($content)) {
-                $content = json_decode(json_encode($content), true);
-            }
-
-            if (is_array($content)) {
-                $msg = $content['message'] ?? $content['error'] ?? $content['cause'][0]['description'] ?? null;
-                if (!$msg) {
-                    $msg = json_encode($content, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                }
-                return "Erro API Mercado Pago: " . $msg;
-            }
-
-            if (is_string($content)) {
-                return "Erro API Mercado Pago: " . $content;
-            }
-
-            return "Erro API Mercado Pago: resposta inesperada.";
+        if ($e instanceof MPApiException && $e->getStatusCode() === 404) {
+            return 'Cobrança não encontrada no Mercado Pago.';
         }
 
-        return $e->getMessage();
+        if ($operacao === 'criar_boleto') {
+            return 'O Mercado Pago recusou os dados da cobrança. Confira CPF/CNPJ, e-mail e endereço do cliente.';
+        }
+
+        return 'O Mercado Pago recusou a operação. Confira os dados e tente novamente.';
     }
 
     public function confirmarPagamento($id)
@@ -149,40 +184,33 @@ class MercadoPago extends BasePaymentGateway
             throw new \Exception('Cobrança não existe!');
         }
 
-        try {
-            $client = new PaymentClient();
-            $payment = $client->get($cobranca->charge_id);
+        $client = new PaymentClient();
+        $payment = $this->chamarGateway('confirmar', $id, fn () => $client->get($cobranca->charge_id));
 
-            if ($payment->status === 'approved' || $payment->payment_method_id === 'bolbradesco') {
-                $this->atualizarDados($id);
-                return $payment;
-            }
-
-            if ($payment->status === 'authorized') {
-                $valor = isset($cobranca->total) ? (float) $cobranca->total : 0;
-                if ($valor > 1000) {
-                    $valor /= 100;
-                }
-
-                $payment = $client->capture(
-                    (int) $cobranca->charge_id,
-                    (float) $valor
-                );
-            } else {
-                throw new \Exception('O pagamento não está em um estado que permite captura (' . $payment->status . ').');
-            }
-
+        if ($payment->status === 'approved' || $payment->payment_method_id === 'bolbradesco') {
             $this->atualizarDados($id);
-            return $payment;
-        } catch (MPApiException $e) {
-            throw new \Exception($this->mpErrorMessage($e));
-        } catch (MPException $e) {
-            throw new \Exception('Erro Mercado Pago: ' . $e->getMessage());
-        } catch (\Exception $e) {
-            throw new \Exception('Erro ao confirmar pagamento: ' . $e->getMessage());
-        }
-    }
 
+            return $payment;
+        }
+
+        if ($payment->status !== 'authorized') {
+            $erro = new GatewayRecusouException('O pagamento não está em um estado que permite captura.');
+            $this->registrarFalha('confirmar', $id, null, microtime(true), $erro);
+
+            throw $erro;
+        }
+
+        $valor = isset($cobranca->total) ? (float) $cobranca->total : 0;
+        if ($valor > 1000) {
+            $valor /= 100;
+        }
+
+        $payment = $this->chamarGateway('confirmar', $id, fn () => $client->capture((int) $cobranca->charge_id, (float) $valor));
+
+        $this->atualizarDados($id);
+
+        return $payment;
+    }
 
     protected function gerarCobrancaBoleto($id, $tipo)
     {
@@ -202,41 +230,10 @@ class MercadoPago extends BasePaymentGateway
             throw new \Exception($err);
         }
 
-        $clientNameParts = explode(' ', $entity->nomeCliente);
-        $documento = preg_replace('/[^0-9]/', '', $entity->documento);
         $expirationDate = (new DateTime())->add(new DateInterval($this->mercadoPagoConfig['boleto_expiration']))->format(DateTime::RFC3339_EXTENDED);
+        $dados = $this->dadosDoBoleto($entity, $id, $tipo, $valor, (string) ($entity->documento ?? ''), $expirationDate);
 
-        try {
-            $client = new PaymentClient();
-            $payment = $client->create([
-                "transaction_amount" => $valor,
-                "description" => PaymentGateway::PAYMENT_TYPE_OS ? "OS #$id" : "Venda #$id",
-                "payment_method_id" => "bolbradesco",
-                "notification_url" => "https://seusite.com.br/mercadopago/retorno",
-                "date_of_expiration" => $expirationDate,
-                "payer" => [
-                    "email" => $entity->email,
-                    "first_name" => $clientNameParts[0],
-                    "last_name" => end($clientNameParts),
-                    "identification" => [
-                        "type" => strlen($documento) == 11 ? "CPF" : "CNPJ",
-                        "number" => $documento,
-                    ],
-                    "address" => [
-                        "zip_code" => preg_replace('/[^0-9]/', '', $entity->cep),
-                        "street_name" => $entity->rua,
-                        "street_number" => $entity->numero,
-                        "neighborhood" => $entity->bairro,
-                        "city" => $entity->cidade,
-                        "federal_unit" => $entity->estado,
-                    ],
-                ],
-            ]);
-        } catch (MPApiException $e) {
-            throw new \Exception($e->getApiResponse()->getContent());
-        } catch (MPException $e) {
-            throw new \Exception($e->getMessage());
-        }
+        $payment = $this->chamarGateway('criar_boleto', null, fn () => (new PaymentClient())->create($dados));
 
         $data = [
             'barcode' => $payment->barcode->content ?? '',
@@ -265,6 +262,47 @@ class MercadoPago extends BasePaymentGateway
         }
 
         return $data;
+    }
+
+    protected function dadosDoBoleto(object $entity, $id, string $tipo, float $valor, string $documento, string $expiracao): array
+    {
+        $clientNameParts = explode(' ', (string) ($entity->nomeCliente ?? ''));
+        $documento = preg_replace('/[^0-9]/', '', $documento);
+        $rotulo = match ($tipo) {
+            PaymentGateway::PAYMENT_TYPE_OS => 'OS',
+            default => 'Venda',
+        };
+
+        $dados = [
+            'transaction_amount' => $valor,
+            'description' => "$rotulo #$id",
+            'payment_method_id' => 'bolbradesco',
+            'date_of_expiration' => $expiracao,
+            'payer' => [
+                'email' => $entity->email ?? '',
+                'first_name' => $clientNameParts[0],
+                'last_name' => end($clientNameParts),
+                'identification' => [
+                    'type' => strlen($documento) == 11 ? 'CPF' : 'CNPJ',
+                    'number' => $documento,
+                ],
+                'address' => [
+                    'zip_code' => preg_replace('/[^0-9]/', '', (string) ($entity->cep ?? '')),
+                    'street_name' => $entity->rua ?? '',
+                    'street_number' => $entity->numero ?? '',
+                    'neighborhood' => $entity->bairro ?? '',
+                    'city' => $entity->cidade ?? '',
+                    'federal_unit' => $entity->estado ?? '',
+                ],
+            ],
+        ];
+
+        $notificacao = $this->urlDeNotificacao('MP_WEBHOOK_SECRET', 'webhooks/mercadopago');
+        if ($notificacao !== null) {
+            $dados['notification_url'] = $notificacao;
+        }
+
+        return $dados;
     }
 
     protected function gerarCobrancaLink($id, $tipo)

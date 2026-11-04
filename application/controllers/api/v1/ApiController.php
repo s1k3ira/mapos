@@ -2,7 +2,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . '/libraries/REST_Controller.php';
+require_once APPPATH . 'libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class ApiController extends REST_Controller
 {
@@ -42,17 +42,26 @@ class ApiController extends REST_Controller
 
     public function calendario_get()
     {
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'vOs')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar OSs',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('vOs', 'Você não está autorizado a Visualizar OSs');
 
+        $this->load->helper('api');
         $this->load->model('os_model');
         $status = $this->get('status', true) ?: null;
         $start = $this->get('start', true) ?: date('Y-m-01');
         $end = $this->get('end', true) ?: date('Y-m-t');
+
+        $erros = [];
+        foreach (['start' => $start, 'end' => $end] as $campo => $valor) {
+            if (apiDataValida($valor, 'Y-m-d') === null) {
+                $erros[$campo] = 'Use o formato aaaa-mm-dd.';
+            }
+        }
+        if ($erros === [] && ! apiJanelaValida($start, $end)) {
+            $erros['end'] = 'O período pode ter no máximo 366 dias.';
+        }
+        if ($erros !== []) {
+            $this->response(['status' => false, 'message' => 'Datas inválidas.', 'erros' => $erros], REST_Controller::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
         $allOs = $this->mapos_model->calendario($start, $end, $status);
 
@@ -113,7 +122,7 @@ class ApiController extends REST_Controller
         $result = [
             'start' => $start,
             'end' => $end,
-            'allOs' => $allOs,
+            'events' => $events,
         ];
 
         $this->response([
@@ -143,19 +152,12 @@ class ApiController extends REST_Controller
     {
         $this->logged_user();
 
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'cAuditoria')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Auditoria',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('cAuditoria', 'Você não está autorizado a Visualizar Auditoria');
 
-        $perPage = $this->get('perPage', true) ?: 20;
-        $page = $this->get('page', true) ?: 0;
-        $start = $page ? ($perPage * $page) : 0;
+        [$limite, $offset] = $this->paginacaoDaApi();
 
         $this->load->model('Audit_model');
-        $logs = $this->Audit_model->get('logs', '*', '', $perPage, $start);
+        $logs = $this->Audit_model->get('logs', '*', '', $limite, $offset);
 
         $this->response([
             'status' => true,

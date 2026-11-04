@@ -2,7 +2,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . '/libraries/REST_Controller.php';
+require_once APPPATH . 'libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class UsuariosController extends REST_Controller
 {
@@ -27,26 +27,18 @@ class UsuariosController extends REST_Controller
 
     public function index_get($id = '')
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'cUsuario')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Visualizar Usuários',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('cUsuario', 'Você não está autorizado a Visualizar Usuários');
 
         if (! $id) {
-            $search = trim($this->get('search', true));
+            $search = trim((string) $this->get('search', true));
 
             if ($search) {
                 $this->load->model('api_model');
                 $usuarios = $this->api_model->searchUsuario($search);
             } else {
-                $perPage = $this->get('perPage', true) ?: 20;
-                $page = $this->get('page', true) ?: 0;
-                $start = $page ? ($perPage * $page) : 0;
+                [$limite, $offset] = $this->paginacaoDaApi();
 
-                $usuarios = $this->usuarios_model->get($perPage, $start);
+                $usuarios = $this->usuarios_model->get($limite, $offset);
             }
 
             if ($usuarios) {
@@ -74,13 +66,7 @@ class UsuariosController extends REST_Controller
 
     public function index_post()
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'cUsuario')) {
-            $this->response([
-                'status' => false,
-                'message' => 'Você não está autorizado a Adicionar Usuários!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
-        }
+        $this->exigirPermissao('cUsuario', 'Você não está autorizado a Adicionar Usuários!');
 
         $_POST = (array) json_decode(file_get_contents('php://input'), true);
 
@@ -135,6 +121,11 @@ class UsuariosController extends REST_Controller
                 'result' => $this->usuarios_model->getById($this->db->insert_id()),
             ], REST_Controller::HTTP_OK);
         }
+
+        $this->response([
+            'status' => false,
+            'message' => 'Não foi possível adicionar o Usuário.',
+        ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
     }
 
     public function index_put($id)
@@ -191,12 +182,13 @@ class UsuariosController extends REST_Controller
 
     public function index_delete($id)
     {
-        $this->logged_user();
-        if (! $this->permission->checkPermission($this->logged_user()->level, 'cUsuario') || $this->logged_user()->usuario->idUsuarios == $id) {
+        $this->exigirPermissao('cUsuario', 'Você não está autorizado a Excluir Usuários!');
+
+        if ((int) $this->logged_user()->usuario->idUsuarios === (int) $id) {
             $this->response([
                 'status' => false,
-                'message' => 'Você não está autorizado a Excluir Usuários!',
-            ], REST_Controller::HTTP_UNAUTHORIZED);
+                'message' => 'Você não pode excluir o próprio usuário.',
+            ], REST_Controller::HTTP_FORBIDDEN);
         }
 
         if (! $id) {
@@ -231,7 +223,13 @@ class UsuariosController extends REST_Controller
             ], $status);
         }
 
-        $this->usuarios_model->delete('usuarios', 'idUsuarios', $id);
+        if (! $this->usuarios_model->delete('usuarios', 'idUsuarios', $id)) {
+            log_message('error', sprintf('usuario exclusao falha id=%d', (int) $id));
+            $this->response([
+                'status' => false,
+                'message' => 'Não foi possível excluir. Nada foi alterado.',
+            ], REST_Controller::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
         $this->log_app('Removeu um usuário. ID: ' . $id);
 
@@ -372,11 +370,12 @@ class UsuariosController extends REST_Controller
         $refreshToken = (string) $this->post('refresh_token', true);
 
         $this->load->library('Refresh_token');
+        $this->load->helper('api');
         $girado = $this->refresh_token->girar($refreshToken, $this->input->ip_address(), $this->input->user_agent());
 
         $usuario = $girado['ok'] ? $this->usuarios_model->getById($girado['usuario_id']) : null;
-        // Usuário removido, desativado ou com a conta expirada: a sessão acaba aqui.
-        if ($girado['ok'] && (empty($usuario) || (int) $usuario->situacao !== 1 || $this->chk_date($usuario->dataExpiracao))) {
+        // Usuário removido, desativado, com a conta expirada ou de grupo desativado: a sessão acaba aqui.
+        if ($girado['ok'] && ! apiUsuarioPodeUsarApi($usuario, fn (int $grupo): bool => $this->Mapos_model->grupoAtivo($grupo))) {
             $this->refresh_token->revogarDoUsuario((int) $girado['usuario_id']);
             $girado = ['ok' => false];
         }

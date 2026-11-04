@@ -228,6 +228,82 @@ class Os_model extends CI_Model
         $this->db->where_in('descricao', osDescricoesDaFatura($idOs))->where('COALESCE(baixado, 0) = 0', null, false)->delete('lancamentos');
     }
 
+    /**
+     * Exclui a OS e o que é dela numa transação. $dentroDaTransacao roda logo após o BEGIN
+     * (ex.: devolver o estoque) e entra no mesmo rollback.
+     */
+    public function excluirComDependentes(int $idOs, bool $excluirCobranca, ?int $idLancamentoFatura, bool $faturada, ?callable $dentroDaTransacao = null): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            if ($dentroDaTransacao !== null) {
+                $dentroDaTransacao();
+            }
+            if ($excluirCobranca) {
+                $this->db->where('os_id', $idOs)->delete('cobrancas');
+            }
+            foreach (['servicos_os', 'produtos_os', 'anexos', 'anotacoes_os'] as $tabela) {
+                $this->db->where('os_id', $idOs)->delete($tabela);
+            }
+            if ($this->historicoDisponivel()) {
+                $this->db->where('os_id', $idOs)->delete('os_historico');
+            }
+            $this->db->where('idOs', $idOs)->delete('os');
+            $apagou = $this->db->affected_rows() === 1;
+            if ($apagou && $faturada) {
+                $this->excluirFatura($idOs, $idLancamentoFatura); // depois da OS: FK os.lancamento
+            }
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_os id=%d', $idOs));
+
+        return false;
+    }
+
+    /**
+     * Fatura a OS: lançamento, dados da OS e histórico na mesma transação.
+     *
+     * @return int|null id do lançamento criado; null = rollback, nada mudou
+     */
+    public function faturar(int $idOs, array $lancamento, array $dadosDaOs, string $statusAnterior, ?int $usuario): ?int
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->insert('lancamentos', $lancamento);
+            $idLancamento = (int) $this->db->insert_id();
+
+            if ($idLancamento > 0 && $this->db->trans_status() !== false) {
+                $this->db->where('idOs', $idOs)->update('os', $dadosDaOs + ['lancamento' => $idLancamento]);
+
+                if ($this->db->trans_status() !== false
+                    && $this->registrarStatus($idOs, $statusAnterior, (string) ($dadosDaOs['status'] ?? 'Faturado'), $usuario)
+                    && $this->db->trans_status() !== false) {
+                    $this->db->trans_commit();
+
+                    return $idLancamento;
+                }
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=faturar_os id=%d', $idOs));
+
+        return null;
+    }
+
     public function getById($id)
     {
         $this->db->select('os.*, clientes.*, clientes.celular as celular_cliente, clientes.telefone as telefone_cliente, clientes.contato as contato_cliente, garantias.refGarantia, garantias.textoGarantia, usuarios.telefone as telefone_usuario, usuarios.email as email_usuario, usuarios.nome');
@@ -650,19 +726,27 @@ class Os_model extends CI_Model
      * Registra uma mudança de status da OS. $usuario null = a OS foi aberta
      * pelo cliente na área do cliente. Status igual ao anterior não registra.
      */
-    public function registrarStatus(int $idOs, ?string $anterior, string $novo, ?int $usuario): void
+    public function registrarStatus(int $idOs, ?string $anterior, string $novo, ?int $usuario): bool
     {
         if ($anterior === $novo || ! $this->historicoDisponivel()) {
-            return;
+            return true;
         }
 
-        $this->db->insert('os_historico', [
+        $gravou = $this->db->insert('os_historico', [
             'os_id' => $idOs,
             'status_anterior' => $anterior,
             'status_novo' => $novo,
             'usuarios_id' => $usuario ?: null,
             'data_hora' => date('Y-m-d H:i:s'),
         ]);
+
+        if ($gravou === false) {
+            log_message('error', sprintf('os historico falha os=%d', $idOs));
+
+            return false;
+        }
+
+        return true;
     }
 
     /** Histórico de status da OS, do mais recente ao mais antigo, com o nome de quem mudou. */

@@ -12,6 +12,10 @@ if (! defined('BASEPATH')) {
  *     $this->refresh_token->revogar($token);       // logout
  *     $this->refresh_token->revogarDoUsuario(7);   // troca de senha
  *
+ * `$tipo` separa o dono do token: 'usuario' (operador, padrão) ou 'cliente'
+ * (área do cliente). `usuario_id` guarda o id do dono conforme o tipo, e um
+ * token de um tipo nunca gira, revoga nem é aceito como o do outro.
+ *
  * O token é aleatório (32 bytes) e só o SHA-256 dele vai para o banco.
  * Cada uso gira o token: o antigo é marcado como usado e nasce outro na mesma
  * familia. Um token já usado que volta depois da tolerância de rede
@@ -27,6 +31,8 @@ class Refresh_token
     /** Repetição legítima (resposta perdida na rede) logo após o uso: recusa sem revogar. */
     public const TOLERANCIA_SEGUNDOS = 10;
 
+    public const TIPOS = ['usuario', 'cliente'];
+
     private const TABELA = 'api_refresh_tokens';
 
     /** @var mixed Query Builder do CodeIgniter */
@@ -38,6 +44,8 @@ class Refresh_token
     private int $duracao;
 
     private ?bool $ativo = null;
+
+    private ?bool $comTipo = null;
 
     /**
      * @param  array{db?: mixed, relogio?: callable, duracao?: int}|null  $opcoes  Para os testes.
@@ -62,24 +70,41 @@ class Refresh_token
     }
 
     /** Emite o primeiro token de uma sessão nova (login). Null se a tabela não existe. */
-    public function emitir(int $usuarioId, ?string $ip = null, ?string $userAgent = null, ?string $familia = null): ?string
+    public function emitir(int $donoId, ?string $ip = null, ?string $userAgent = null, ?string $familia = null, string $tipo = 'usuario'): ?string
     {
+        if (! in_array($tipo, self::TIPOS, true)) {
+            throw new InvalidArgumentException('Tipo de refresh token inválido.');
+        }
+
         if (! $this->ativo()) {
             return null;
+        }
+
+        if (! $this->comTipo()) {
+            if ($tipo === 'cliente') {
+                log_message('error', 'Refresh token do cliente desligado: rode as migrations (coluna api_refresh_tokens.tipo não existe).');
+
+                return null;
+            }
         }
 
         $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
         $agora = $this->agora();
 
-        $this->db->insert(self::TABELA, [
-            'usuario_id' => $usuarioId,
+        $linha = [
+            'usuario_id' => $donoId,
             'familia' => $familia ?? bin2hex(random_bytes(16)),
             'token_hash' => self::hash($token),
             'criado_em' => $this->data($agora),
             'expira_em' => $this->data($agora + $this->duracao),
             'ip' => $ip !== null ? mb_substr($ip, 0, 45) : null,
             'user_agent' => $userAgent !== null ? mb_substr($userAgent, 0, 255) : null,
-        ]);
+        ];
+        if ($this->comTipo()) {
+            $linha['tipo'] = $tipo;
+        }
+
+        $this->db->insert(self::TABELA, $linha);
 
         return $token;
     }
@@ -89,7 +114,7 @@ class Refresh_token
      *
      * @return array{ok: bool, motivo?: string, usuario_id?: int, familia?: string, refresh_token?: string}
      */
-    public function girar(string $token, ?string $ip = null, ?string $userAgent = null): array
+    public function girar(string $token, ?string $ip = null, ?string $userAgent = null, string $tipo = 'usuario'): array
     {
         if (! $this->ativo() || $token === '') {
             return ['ok' => false, 'motivo' => 'invalido'];
@@ -97,6 +122,11 @@ class Refresh_token
 
         $linha = $this->db->where('token_hash', self::hash($token))->limit(1)->get(self::TABELA)->row();
         if (! $linha) {
+            return ['ok' => false, 'motivo' => 'invalido'];
+        }
+
+        $tipoDaLinha = $this->comTipo() ? (string) $linha->tipo : 'usuario';
+        if ($tipoDaLinha !== $tipo) {
             return ['ok' => false, 'motivo' => 'invalido'];
         }
 
@@ -110,6 +140,7 @@ class Refresh_token
             // Já girado: se passou da tolerância, alguém guardou uma cópia. Revoga tudo da sessão.
             if ($agora - strtotime($linha->usado_em) > self::TOLERANCIA_SEGUNDOS) {
                 $this->revogarFamilia($linha->familia);
+                log_message('error', sprintf('refresh reuso tipo=%s dono=%d', $tipo, (int) $linha->usuario_id));
             }
 
             return ['ok' => false, 'motivo' => 'reutilizado'];
@@ -129,7 +160,7 @@ class Refresh_token
             'ok' => true,
             'usuario_id' => (int) $linha->usuario_id,
             'familia' => (string) $linha->familia,
-            'refresh_token' => (string) $this->emitir((int) $linha->usuario_id, $ip, $userAgent, $linha->familia),
+            'refresh_token' => (string) $this->emitir((int) $linha->usuario_id, $ip, $userAgent, $linha->familia, $tipo),
         ];
     }
 
@@ -173,13 +204,19 @@ class Refresh_token
     }
 
     /** Troca de senha ou usuário desativado: nenhuma sessão do usuário renova mais. */
-    public function revogarDoUsuario(int $usuarioId): void
+    public function revogarDoUsuario(int $donoId, string $tipo = 'usuario'): void
     {
         if (! $this->ativo()) {
             return;
         }
 
-        $this->db->where('usuario_id', $usuarioId)->where('revogado_em IS NULL', null, false)->update(self::TABELA, ['revogado_em' => $this->data($this->agora())]);
+        if ($this->comTipo()) {
+            $this->db->where('tipo', $tipo);
+        } elseif ($tipo === 'cliente') {
+            return;
+        }
+
+        $this->db->where('usuario_id', $donoId)->where('revogado_em IS NULL', null, false)->update(self::TABELA, ['revogado_em' => $this->data($this->agora())]);
     }
 
     private function revogarFamilia(string $familia): void
@@ -197,6 +234,15 @@ class Refresh_token
         }
 
         return $this->ativo;
+    }
+
+    private function comTipo(): bool
+    {
+        if ($this->comTipo === null) {
+            $this->comTipo = $this->db->field_exists('tipo', self::TABELA);
+        }
+
+        return $this->comTipo;
     }
 
     private function agora(): int

@@ -5,7 +5,8 @@
 // sidebar e do modo já vem aplicado pelo assets/js/tema.js no <head>; este
 // módulo só reage às ações do usuário.
 
-import { post } from '../../lib/http.js';
+import { ErroHttp, post } from '../../lib/http.js';
+import { mostrarToast } from '../../lib/toast.js';
 import { aplicarCor, aplicarModo, CORES, salvarCor, salvarModo } from '../../lib/tema.js';
 
 export const CHAVE_SIDEBAR = 'mapos:sidebar';
@@ -37,6 +38,11 @@ export function grupoDaSidebar(alvo, sidebar) {
     return resumo && sidebar?.contains(resumo) ? resumo : null;
 }
 
+const avisarFalha = (opcoes) => mostrarToast(opcoes);
+
+// O aviso de localStorage bloqueado sai uma vez por carregamento de página.
+let avisouArmazenamento = false;
+
 function gravar(chave, valor) {
     try {
         if (valor === null) {
@@ -44,8 +50,12 @@ function gravar(chave, valor) {
         } else {
             globalThis.localStorage?.setItem(chave, valor);
         }
-    } catch {
+    } catch (erro) {
         // localStorage bloqueado: o estado vale só até a próxima página.
+        if (!avisouArmazenamento) {
+            avisouArmazenamento = true;
+            mostrarToast({ variante: 'danger', mensagem: 'Não foi possível guardar esta preferência no navegador.' });
+        }
     }
 }
 
@@ -75,35 +85,45 @@ export function urlDoAtalho(evento, atalhos) {
 function lerAtalhos(corpo) {
     try {
         return JSON.parse(corpo.querySelector('#layout-atalhos')?.textContent ?? '{}') ?? {};
-    } catch {
+    } catch (erro) {
+        mostrarToast({ variante: 'danger', mensagem: 'Os atalhos de teclado não puderam ser carregados.' });
+
         return {};
     }
+}
+
+function falhouAoGravar(erro, avisar) {
+    avisar({
+        variante: 'danger',
+        mensagem: erro instanceof ErroHttp ? erro.message : 'Não foi possível salvar a preferência no servidor.',
+    });
+
+    return false;
 }
 
 /**
  * Grava o modo do usuário no servidor (#2854), para valer em qualquer
  * navegador. Se falhar (rede, sessão), o localStorage já guardou a escolha
- * neste navegador, então a falha não é mostrada.
+ * neste navegador, mas a falha é avisada: a escolha não vale nos outros.
  */
-export function gravarNoServidor(url, modo) {
+export function gravarNoServidor(url, modo, avisar = avisarFalha) {
     if (!url) {
         return Promise.resolve(false);
     }
 
-    return post(url, { modo }).then(() => true, () => false);
+    return post(url, { modo }).then(() => true, (erro) => falhouAoGravar(erro, avisar));
 }
 
 /**
  * Grava a cor do tema do usuário no servidor (#3032), como gravarNoServidor()
- * faz com o modo. Sem URL ou com falha devolve false: o cache do navegador já
- * guardou a escolha.
+ * faz com o modo. Sem URL ou com falha devolve false (a falha é avisada).
  */
-export function gravarCorNoServidor(url, cor) {
+export function gravarCorNoServidor(url, cor, avisar = avisarFalha) {
     if (!url) {
         return Promise.resolve(false);
     }
 
-    return post(url, { cor }).then(() => true, () => false);
+    return post(url, { cor }).then(() => true, (erro) => falhouAoGravar(erro, avisar));
 }
 
 export default function iniciar(corpo) {

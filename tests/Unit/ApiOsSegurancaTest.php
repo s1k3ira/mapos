@@ -268,8 +268,8 @@ final class ApiOsSegurancaTest extends MaposTestCase
     {
         $this->controller->permission->pode = false;
 
-        $this->assertSame(401, $this->chamar('desconto_post', [1], ['tipoDesconto' => 'real', 'desconto' => '10'])['code']);
-        $this->assertSame(401, $this->chamar('anotacoes_delete', [1, 1])['code']);
+        $this->assertSame(403, $this->chamar('desconto_post', [1], ['tipoDesconto' => 'real', 'desconto' => '10'])['code']);
+        $this->assertSame(403, $this->chamar('anotacoes_delete', [1, 1])['code']);
         $this->assertSame(1, $this->contar('anotacoes_os', ['idAnotacoes' => 1]));
     }
 

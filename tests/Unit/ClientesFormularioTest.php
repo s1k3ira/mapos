@@ -34,8 +34,9 @@ final class ClientesFormularioTest extends MaposTestCase
         $this->assertSame('SP', $dados['estado']);
         $this->assertSame(1, $dados['pessoa_fisica']);
         $this->assertSame(0, $dados['fornecedor']);
-        // Sem senha, o cadastro novo usa o CPF/CNPJ sem pontuação.
-        $this->assertTrue(password_verify('12345678909', $dados['senha']));
+        // Sem senha, o cadastro novo nunca usa o CPF/CNPJ como senha.
+        $this->assertFalse(password_verify('12345678909', $dados['senha']));
+        $this->assertStringStartsWith('$2y$', $dados['senha']);
         // Só os campos do formulário: nada de id, asaas_id ou dataCadastro vindo do POST.
         $this->assertArrayNotHasKey('idClientes', $dados);
         $this->assertArrayNotHasKey('asaas_id', $dados);
@@ -113,7 +114,8 @@ final class ClientesFormularioTest extends MaposTestCase
 
         $this->assertNotEmpty($trecho);
         $this->assertStringContainsString("\$this->validarFormulario('clientes')", $trecho[0]);
-        $this->assertStringContainsString('clienteDadosDoFormulario($post, $cliente === null)', $trecho[0]);
+        $this->assertStringContainsString('clienteDadosDoFormulario($post, true, $senhaGerada)', $trecho[0]);
+        $this->assertStringContainsString('clienteDadosDoFormulario($post, false)', $trecho[0]);
         $this->assertStringContainsString("'idClientes', \$id", $trecho[0]);
         $this->assertStringContainsString('(int) $cliente->idClientes', $trecho[0]);
         $this->assertStringContainsString('$this->salvarCliente($cliente)', $codigo);

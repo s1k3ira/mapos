@@ -83,10 +83,20 @@ Compare o seu `.env` com o `application/.env.example` da v5 e acrescente o que f
 | `APP_COOKIE_SAMESITE` | `SameSite` dos cookies. | `Lax` |
 | `APP_PROXY_IPS` | IPs do proxy reverso em que o Map-OS confia para ler o `X-Forwarded-Proto`. | vazio |
 | `API_REFRESH_TOKEN_EXPIRE_TIME` | Duração do refresh token da API, em segundos. | `2592000` (30 dias) |
-| `API_TOKEN_EXPIRE_TIME` | Duração do access token, em segundos. O token do usuário dura no máximo 1 hora, mesmo que este valor seja maior; o token da área do cliente (sem refresh) dura o configurado. | o instalador grava `3600` (1 hora) |
+| `API_TOKEN_EXPIRE_TIME` | Duração do access token, em segundos. O token do usuário dura no máximo 1 hora, mesmo que este valor seja maior; o token da área do cliente também dura no máximo 1 hora e vem com refresh token. | o instalador grava `3600` (1 hora) |
 | `API_CORS_ORIGINS` | Origens que podem chamar a API de um navegador. Vazio: sem CORS. | vazio |
 | `API_RATE_LIMIT` | Requisições por minuto por IP na API. `0` desliga. | `300` |
 | `UPDATER_PRERELEASES` | Inclui pré-releases na busca de atualização. | `false` |
+| `EFI_WEBHOOK_SECRET` | Segredo que vai no caminho do webhook da Efí. Vazio: webhook da Efí desligado (`401`). | vazio |
+| `MP_WEBHOOK_SECRET` | Assinatura secreta do webhook do Mercado Pago. Vazio: webhook desligado (`401`) e a cobrança sai sem `notification_url`. | vazio |
+| `ASAAS_WEBHOOK_TOKEN` | Token de autenticação do webhook do Asaas. Vazio: webhook desligado (`401`). | vazio |
+| `WEBHOOK_RATE_LIMIT` | Chamadas por minuto por IP nos webhooks. | `120` |
+| `CLIENTE_OS_LIMITE_DIARIO` | Aberturas de OS por cliente por dia na API e na área do cliente. `0` desliga. | `10` |
+| `PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT` | Timeout, em segundos, das chamadas ao Mercado Pago. | `10` |
+| `PAYMENT_GATEWAYS_ASAAS_TIMEOUT` | Timeout, em segundos, das chamadas ao Asaas. | `10` |
+| `PAYMENT_GATEWAYS_EFI_TIMEOUT` | Timeout, em segundos, das chamadas à Efí. O padrão caiu de 30 para 10. | `10` |
+
+Os webhooks de pagamento estão em [webhooks-de-pagamento.md](webhooks-de-pagamento.md).
 
 Variáveis que já existiam e **mudaram de comportamento**:
 
@@ -149,7 +159,27 @@ As migrations da v5, na ordem em que rodam (conferidas em `application/database/
 | `add_token_versao` | Coluna `token_versao` em `usuarios` e `clientes`: trocar a senha ou desativar a conta invalida os access tokens já emitidos. |
 | `add_sessao_versao_to_usuarios` | Coluna `usuarios.sessao_versao`: trocar a senha derruba as outras sessões abertas do painel. |
 
+As cinco migrations de segurança que fecham a v5, pelo nome completo do arquivo:
+
+| Migration | O que faz |
+| --- | --- |
+| `20261103000000_create_webhook_eventos` | Tabela `webhook_eventos`, a idempotência dos webhooks de pagamento. |
+| `20261103000100_add_tipo_to_api_refresh_tokens` | Distingue refresh token de operador e de cliente. |
+| `20261103000200_add_senha_trocar_sessao_versao_to_clientes` | Colunas `senha_trocar` e `sessao_versao` em `clientes`. |
+| `20261103000300_add_reserva_to_email_queue` | Reserva de e-mail pelo processo que o envia, para a fila não duplicar. |
+| `20261103000400_add_index_charge_to_cobrancas` | Índice da cobrança do gateway, usado pelos webhooks. |
+
 Sobre o `move_uploads_to_storage`: ele pode rodar de novo com segurança; arquivo que não for encontrado fica como estava. Depois de migrar, confira que os anexos abrem e que `assets/anexos` e `assets/arquivos` esvaziaram. O link direto antigo (`/assets/anexos/...`) deixa de funcionar de propósito. Mais detalhes, e o rollback, em [armazenamento-de-arquivos.md](armazenamento-de-arquivos.md).
+
+#### Clientes que ainda usam o documento como senha (opcional)
+
+Na 4.x o cliente criado pelo operador tinha o CPF ou CNPJ como senha. Para obrigar a troca de quem ainda usa o documento como senha, rode:
+
+```bash
+php index.php tools marcarSenhasLegadas
+```
+
+O comando marca `senha_trocar = 1` nesses clientes e imprime só `<n> cliente(s) marcado(s)`. No próximo acesso, eles definem uma senha nova antes de continuar. Clientes novos já nascem com senha aleatória e troca obrigatória.
 
 ### 3.5. Configure o servidor web
 
@@ -157,7 +187,8 @@ A v5 foi feita para o servidor entregar **só** `index.php`, `assets/` e, até o
 
 - **Apache:** o `.htaccess` da raiz e o de `application/` já fazem o bloqueio, **desde que o `AllowOverride` esteja liberado** para a pasta do sistema. Sem isso o servidor ignora os `.htaccess` e o `application/.env` (senha do banco, chave de criptografia, chave dos tokens da API) fica legível pela URL.
 - **Nginx, Caddy, FrankenPHP, Apache sem `.htaccess`:** é preciso aplicar as regras do guia **[servidor-web.md](servidor-web.md)**, que traz a configuração pronta de cada servidor.
-- O `docker/etc/nginx/default.conf` serve ao ambiente Docker e já traz as regras.
+- No Docker, a fonte é `docker/etc/nginx/default.template.conf`; o compose gera o `default.conf` a partir dele ao subir e as regras já estão lá.
+- As rotas `webhooks/*` precisam chegar ao `index.php` por POST, e o caminho da Efí deve ficar fora do access log ([webhooks-de-pagamento.md](webhooks-de-pagamento.md)).
 
 O `application/.env` é lido de `application/` (o `index.php` não tem outro caminho configurável), então a proteção é bloquear a pasta. **Depois de configurar o servidor, e sempre que mexer nele, teste:**
 
@@ -182,6 +213,8 @@ Os cron jobs de e-mail continuam os mesmos:
 */5 * * * * php /caminho/do/sistema/index.php email/retry
 ```
 
+Os comandos agora saem com 0 em caso de sucesso e 1 em caso de falha, e o `email/retry` também aplica a retenção de dados antigos (`webhook_eventos` 90 dias; refresh tokens expirados ou revogados 30 dias; e-mails `sent` 7 dias e `failed` 30 dias).
+
 ### 3.7. Confira
 
 - Login no painel e na área do cliente (`/mine`).
@@ -190,6 +223,8 @@ Os cron jobs de e-mail continuam os mesmos:
 - Console do navegador sem erros de CSP (se algo for bloqueado, veja [cabecalhos-de-seguranca.md](cabecalhos-de-seguranca.md)).
 - Se usa a API: login, `refresh` e uma rota autenticada (veja abaixo).
 - Em Meu perfil, a opção de ativar o 2FA ([dois-fatores.md](dois-fatores.md)).
+- No Docker, o smoke de segurança: `scripts/smoke-seguranca.sh` (pré-requisito: instalação concluída com `API_ENABLED=true`; sai 0, 1 ou 2).
+- Se usa pagamentos online, a conferência dos webhooks em [webhooks-de-pagamento.md](webhooks-de-pagamento.md).
 
 ## 4. O que muda para cada perfil
 
@@ -204,6 +239,9 @@ Os cron jobs de e-mail continuam os mesmos:
 - **OS faturada com pagamento baixado** não pode ser excluída: estorne o recebimento antes. Ao excluir uma OS faturada sem baixa, só saem os lançamentos em aberto dela.
 - **E-mail da OS:** o botão "E-mail" da tela da OS envia por formulário (POST) e exige a permissão de editar OS (`eOs`). Link salvo para `os/enviar_email/<id>` não envia mais.
 - **Planilhas (XLSX)** dos relatórios: texto que começa com `=`, `+`, `-` ou `@` sai com um apóstrofo na frente, para o Excel não executá-lo como fórmula.
+- **Sair:** `login/sair` e `mine/sair` só funcionam por POST com CSRF; GET responde `405` e não encerra a sessão. Personalização com link "Sair" precisa virar um formulário POST com o token CSRF.
+- **Login por status:** `login/verificarLogin` e `mine/login` respondem JSON por status HTTP (200, 422 com `erros` por campo, 401 credenciais, 403 conta desativada ou expirada, 429 com `Retry-After`). O token CSRF novo vem no campo de nome configurado (`APP_CSRF_TOKEN_NAME`), não mais em `MAPOS_TOKEN`.
+- **Cliente novo:** recebe uma senha aleatória e troca a senha no primeiro acesso.
 - **Recuperação de senha do cliente:** o link vale 1 hora (eram 24) e uma só vez.
 - **Exclusões** passam por uma janela de confirmação, e ações das cobranças (atualizar, enviar por e-mail, confirmar, cancelar, excluir) e a exclusão de usuário usam POST com token CSRF. Links salvos que apontavam para elas como GET deixam de funcionar.
 
@@ -244,13 +282,14 @@ Detalhes completos em [api-autenticacao.md](api-autenticacao.md). **Quem tem app
 - **Chave:** com `API_JWT_KEY` vazia, com menos de 32 caracteres ou igual ao `.env.example`, a API responde `503` em produção.
 - **Login:** a resposta ganha `refresh_token`, `token_type` e `expires_in`. O access token passa a ter a claim `exp`; o do usuário dura no máximo 1 hora. Tokens da 4.x (sem `exp`) valem até vencer pelo `API_TIME`.
 - **Renovação:** `POST /api/v1/refresh` (refresh token de uso único) e `POST /api/v1/logout`. **`GET /api/v1/reGenToken` foi removida** e responde `404`: o app precisa renovar pelo refresh token ou fazer login de novo.
-- **Tokens revogáveis:** trocar a senha, desativar a conta ou fazer logout invalida na hora os access tokens já emitidos (`403`). Depois de trocar a própria senha pela API, o app precisa entrar de novo.
+- **Tokens revogáveis:** trocar a senha, desativar a conta ou fazer logout invalida na hora os access tokens já emitidos (`401`). Depois de trocar a própria senha pela API, o app precisa entrar de novo.
 - **2FA:** quem ativou o 2FA precisa enviar o campo `totp` no login. O app móvel atual não envia, então esses usuários só devem ligar o 2FA depois que o app for atualizado ([dois-fatores.md](dois-fatores.md)).
 - **`PUT /api/v1/usuarios/{id}` no próprio usuário:** só grava os campos de perfil e **ignora** `permissoes_id`, `situacao` e `dataExpiracao`. Trocar a própria senha exige `senha_atual` (sem ela, `403`), a nova senha tem no mínimo 8 caracteres, a senha é sempre gravada com hash e o e-mail não pode repetir. `situacao` e `permissoes_id` só são obrigatórios ao editar *outro* usuário (que exige a permissão `cUsuario`). O super admin não pode ser desativado nem sair do grupo Administrador.
 - **Usuários pela API seguem a regra de delegação do painel (#2879):** quem tem `cUsuario` e não é administrador só cria, edita ou exclui usuários, e só atribui grupos, com permissões que o próprio grupo dele tem (`403` fora disso). Só o usuário principal altera os dados do usuário principal, e `DELETE` recusa usuário com OS, vendas, lançamentos ou garantias (desative-o). `POST` exige um `permissoes_id` de grupo ativo.
 - **Respostas sem senha:** o hash da senha não aparece mais nas respostas de clientes, usuários e OS. Um app que lia esse campo deixa de recebê-lo.
 - **Anexos de OS:** a resposta deixa de trazer o caminho do arquivo e passa a trazer `url` e `thumb_url`, que **exigem o token**. O arquivo é baixado por `GET api/v1/os/<os>/anexos/<id>` (`?miniatura=1` para a miniatura) e, para o cliente, `GET api/v1/client/os/<os>/anexos/<id>`. Detalhes em [armazenamento-de-arquivos.md](armazenamento-de-arquivos.md).
 - **OS pela API:** o item (produto, serviço) e a anotação precisam pertencer à OS da URL (`404` se não); OS faturada ou cancelada só é editada com `control_editos` ligado (`403`); o desconto é calculado no servidor e preço e quantidade são validados.
+- **Sete breaking changes** (também no `CHANGELOG.md`): falta de permissão passa de `401` para `403`; token ausente, inválido, expirado, de outro tipo ou de conta ou grupo desativado passa de `403` para `401`; login por status HTTP e novo campo CSRF; logout só por POST; token do cliente de no máximo 1 h com refresh obrigatório (`client/refresh`); `perPage` com teto 100 e `422` para valor inválido; limite diário de abertura de OS (`CLIENTE_OS_LIMITE_DIARIO`, `429`). Veja [api-autenticacao.md](api-autenticacao.md).
 - **Limite de requisições:** `API_RATE_LIMIT` (300 por minuto por IP). Acima disso, `429` com `Retry-After`. O login também tem limite de tentativas, como o painel.
 - **CORS:** só com `API_CORS_ORIGINS` preenchido, vale para a API de usuários e para a do cliente. App Android/iOS não precisa.
 

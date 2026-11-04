@@ -303,7 +303,7 @@ final class ApiAutenticacaoTest extends MaposTestCase
 
         $this->assertStringContainsString('$this->user->usuario->permissoes_id', $trecho[0]);
         $this->assertStringNotContainsString('$decodedToken->data->permissao', $trecho[0]);
-        $this->assertStringContainsString('(int) $this->user->usuario->situacao !== 1', $trecho[0]);
+        $this->assertStringContainsString('apiUsuarioPodeUsarApi($this->user->usuario', $trecho[0]);
         $this->assertStringContainsString('versaoVigente', $trecho[0]);
         $this->assertStringContainsString('sessaoDoTokenAtiva', $trecho[0]);
 

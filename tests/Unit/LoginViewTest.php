@@ -115,6 +115,17 @@ final class LoginViewTest extends MaposTestCase
         $this->assertStringContainsString('<span data-login-texto>Sessão &lt;b&gt;encerrada&lt;/b&gt;</span>', $html);
     }
 
+    public function testSucessoDoLogoutApareceNumAlertDeSucesso(): void
+    {
+        $com = $this->renderizar(['sucesso' => 'Você saiu.']);
+        $this->assertMatchesRegularExpression('#<div class="mb-4">\s*<div[^>]*>.*Você saiu\.#s', $com);
+        $this->assertLessThan(strpos($com, '<form id="formLogin"'), strpos($com, 'Você saiu.'), 'O aviso vem antes do formulário.');
+
+        $sem = $this->renderizar();
+        $this->assertStringNotContainsString('Você saiu.', $sem);
+        $this->assertStringNotContainsString('role="status"', $sem);
+    }
+
     public function testNomeDoSistemaEVersaoEscapados(): void
     {
         $html = $this->renderizar([], ['app_name' => 'Oficina "<Zé>"', 'app_version' => '5<1']);

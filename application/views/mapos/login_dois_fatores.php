@@ -9,7 +9,7 @@
  */
 $entrada = [
     'titulo' => 'Verificação em dois fatores',
-    'secundaria' => ['label' => 'Voltar ao login', 'href' => site_url('login/sair'), 'icon' => 'log-in'],
+    'secundaria' => ['label' => 'Voltar ao login', 'href' => site_url('login'), 'icon' => 'log-in'],
 ];
 include APPPATH . 'views/entrada/inicio.php';
 ?>

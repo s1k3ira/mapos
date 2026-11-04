@@ -12,7 +12,8 @@
  * valida no navegador e posta em login/verificarLogin. Sem JavaScript o
  * formulário não envia nada: verificarLogin responde JSON, não uma página.
  *
- * @var string|null $erro  Mensagem de erro vinda de um redirect (flashdata)
+ * @var string|null $erro     Mensagem de erro vinda de um redirect (flashdata)
+ * @var string|null $sucesso  Aviso de sucesso ("Você saiu." depois do logout)
  *
  * A mensagem de erro fica num alert com um <span data-login-texto>: o texto
  * entra escapado com e() e é ali que o módulo troca a mensagem depois.
@@ -44,6 +45,10 @@ include APPPATH . 'views/entrada/inicio.php';
 
         <section class="superficie-entrada w-full rounded-xxl border border-hairline-violet bg-night p-6 text-text sm:p-8" aria-labelledby="titulo-login">
             <h2 id="titulo-login" class="mb-6 font-display text-heading-md text-text"><?= e($saudacao . '! Entre na sua conta') ?></h2>
+
+            <?php if (! empty($sucesso)) { ?>
+                <div class="mb-4"><?= component('alert', ['message' => (string) $sucesso, 'variant' => 'success']) ?></div>
+            <?php } ?>
 
             <form id="formLogin" method="post" action="<?= e(site_url('login/verificarLogin?ajax=true')) ?>" novalidate class="flex flex-col gap-4" <?= js_module('login/formulario') ?> data-destino="<?= e(site_url('mapos')) ?>">
                 <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">

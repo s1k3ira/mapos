@@ -2,7 +2,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . 'libraries/Format.php';
+require_once APPPATH . 'libraries/Format.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 /**
  * CodeIgniter Rest Controller
@@ -395,6 +395,9 @@ abstract class REST_Controller extends CI_Controller
      */
     protected $_enable_xss = false;
 
+    /** Token decodificado e usuário do banco, preenchido por logged_user(). */
+    public $user;
+
     private $is_valid_request = true;
 
     /**
@@ -449,27 +452,15 @@ abstract class REST_Controller extends CI_Controller
      */
     protected function limiteDeRequisicoes(): void
     {
-        $limite = (int) $this->config->item('api_rate_limit');
-        if ($limite <= 0 || $this->input->method() === 'options' || ! $this->db->table_exists('api_rate_limit')) {
+        if ($this->input->method() === 'options') {
             return;
         }
 
-        $janela = intdiv(time(), 60);
-        $chave = hash_hmac('sha256', $this->input->ip_address(), (string) config_item('encryption_key'));
+        $this->load->library('Limite_requisicoes');
+        $espera = $this->limite_requisicoes->segundosParaLiberar('api', $this->input->ip_address(), (int) $this->config->item('api_rate_limit'));
 
-        $this->db->query(
-            'INSERT INTO api_rate_limit (chave, janela, total) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE total = total + 1',
-            [$chave, $janela]
-        );
-        $total = (int) $this->db->select('total')->where(['chave' => $chave, 'janela' => $janela])->get('api_rate_limit')->row('total');
-
-        // Limpa janelas antigas de vez em quando, sem custo em toda requisição.
-        if (random_int(1, 100) === 1) {
-            $this->db->where('janela <', $janela - 5)->delete('api_rate_limit');
-        }
-
-        if ($total > $limite) {
-            header('Retry-After: ' . (60 - (time() % 60)));
+        if ($espera > 0) {
+            header('Retry-After: ' . $espera);
             $this->response([
                 'status' => false,
                 'message' => 'Muitas requisições. Aguarde um instante e tente novamente.',
@@ -850,19 +841,62 @@ abstract class REST_Controller extends CI_Controller
         }
 
         // Call the controller method and passed arguments
+        $this->executarMetodo($controller_method, $arguments);
+    }
+
+    /**
+     * Executa o método do controller. Qualquer exceção ou erro (inclusive
+     * TypeError) vira 500 em JSON, sem arquivo/linha no corpo; o detalhe vai
+     * só para o log.
+     */
+    protected function executarMetodo(string $metodo, array $argumentos): void
+    {
         try {
             if ($this->is_valid_request) {
-                call_user_func_array([$this, $controller_method], $arguments);
+                call_user_func_array([$this, $metodo], $argumentos);
             }
-        } catch (Exception $ex) {
-            if ($this->config->item('rest_handle_exceptions') === false) {
-                throw $ex;
-            }
+        } catch (\Throwable $e) {
+            $rota = (string) $this->uri->uri_string();
+            log_message('error', sprintf(
+                'api excecao classe=%s mensagem=%s local=%s:%d rota=%s',
+                $e::class,
+                mb_substr($e->getMessage(), 0, 300),
+                $e->getFile(),
+                $e->getLine(),
+                $rota
+            ));
 
-            // If the method doesn't exist, then the error will be caught and an error response shown
-            $_error = &load_class('Exceptions', 'core');
-            $_error->show_exception($ex);
+            $this->response(['status' => false, 'message' => 'Erro interno'], self::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /** Responde 403 quando o usuário logado não tem a permissão. */
+    protected function exigirPermissao(string $permissao, string $mensagem): void
+    {
+        if (! $this->permission->checkPermission($this->logged_user()->level, $permissao)) {
+            $this->response(['status' => false, 'message' => $mensagem], self::HTTP_FORBIDDEN);
+        }
+    }
+
+    /**
+     * Paginação da API (perPage de 1 a 100, page a partir de 0).
+     *
+     * @return array{0: int, 1: int} [limite, offset]; parâmetro inválido responde 422
+     */
+    protected function paginacaoDaApi(): array
+    {
+        $this->load->helper('api');
+        $paginacao = apiPaginacao($this->get('perPage', true), $this->get('page', true));
+
+        if (! $paginacao['ok']) {
+            $this->response([
+                'status' => false,
+                'message' => 'Parâmetros de paginação inválidos.',
+                'erros' => $paginacao['erros'],
+            ], self::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return [$paginacao['limite'], $paginacao['offset']];
     }
 
     /**
@@ -2277,18 +2311,11 @@ abstract class REST_Controller extends CI_Controller
 
     public function logged_user()
     {
-        $headers = $this->input->request_headers();
-
-        $this->CI = &get_instance();
-        $this->CI->load->config('jwt');
-        $token_header = $this->config->item('token_header');
-
         if (! isset($_SERVER["HTTP_AUTHORIZATION"])) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça login para acessar a API.',
             ], REST_Controller::HTTP_UNAUTHORIZED);
-            $this->response(['Authentication failed'], REST_Controller::HTTP_OK);
         }
 
         $this->load->library('Authorization_Token');
@@ -2299,7 +2326,7 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         // Um token da área do cliente não pode ser usado como token de
@@ -2308,10 +2335,12 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         $this->load->model('Usuarios_model');
+        $this->load->model('Mapos_model');
+        $this->load->helper('api');
         $this->user = $decodedToken;
         $this->user->usuario = $this->Usuarios_model->getById($decodedToken->data->uid);
 
@@ -2319,14 +2348,13 @@ abstract class REST_Controller extends CI_Controller
         // token: quem foi removido, desativado ou teve a permissão trocada
         // perde o acesso na hora, sem esperar o token vencer. O mesmo vale para
         // quem trocou a senha (versão do token) ou saiu (sessão `sid` revogada).
-        if (empty($this->user->usuario)
-            || (int) $this->user->usuario->situacao !== 1
+        if (! apiUsuarioPodeUsarApi($this->user->usuario, fn (int $grupo): bool => $this->Mapos_model->grupoAtivo($grupo))
             || ! Authorization_Token::versaoVigente($decodedToken->data, $this->authorization_token->versaoAtual('usuarios', 'idUsuarios', (int) $decodedToken->data->uid))
             || ! $this->sessaoDoTokenAtiva($decodedToken->data)) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         $this->user->level = $this->user->usuario->permissoes_id;
@@ -2347,20 +2375,21 @@ abstract class REST_Controller extends CI_Controller
         return $this->refresh_token->familiaAtiva($sid);
     }
 
-    public function logged_client()
+    /**
+     * Cliente autenticado pelo access token da API da área do cliente.
+     *
+     * Toda falha de token é 401. Token sem `sid` (emitido antes do refresh
+     * token) ou de sessão revogada também é recusado. Com a troca de senha
+     * obrigatória pendente (`senha_trocar = 1`) responde 403, exceto nas rotas
+     * que passam `$permitirTrocaPendente` (a própria troca de senha).
+     */
+    public function logged_client(bool $permitirTrocaPendente = false)
     {
-        $headers = $this->input->request_headers();
-
-        $this->CI = &get_instance();
-        $this->CI->load->config('jwt');
-        $token_header = $this->config->item('token_header');
-
         if (! isset($_SERVER["HTTP_AUTHORIZATION"])) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça login para acessar a API.',
             ], REST_Controller::HTTP_UNAUTHORIZED);
-            $this->response(['Authentication failed'], REST_Controller::HTTP_OK);
         }
 
         $this->load->library('Authorization_Token');
@@ -2371,7 +2400,7 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         // Só tokens emitidos pelo login da área do cliente valem aqui.
@@ -2379,17 +2408,30 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         $this->load->model('Clientes_model');
         $this->client = $decodedToken;
         $this->client->usuario = $this->Clientes_model->getById($decodedToken->data->uid);
 
-        if (! $this->client->usuario || ! Authorization_Token::versaoVigente($decodedToken->data, $this->authorization_token->versaoAtual('clientes', 'idClientes', (int) $decodedToken->data->uid))) {
+        // Sem `sid` o token não tem sessão que se possa revogar (emitido antes do
+        // refresh token, com até 30 dias): o app faz o login de novo.
+        if (! $this->client->usuario
+            || ! Authorization_Token::versaoVigente($decodedToken->data, $this->authorization_token->versaoAtual('clientes', 'idClientes', (int) $decodedToken->data->uid))
+            || (string) ($decodedToken->data->sid ?? '') === ''
+            || ! $this->sessaoDoTokenAtiva($decodedToken->data)) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
+            ], self::HTTP_UNAUTHORIZED);
+        }
+
+        if ((int) ($this->client->usuario->senha_trocar ?? 0) === 1 && ! $permitirTrocaPendente) {
+            $this->response([
+                'status' => false,
+                'code' => 'troca_de_senha_obrigatoria',
+                'message' => 'Defina uma nova senha antes de continuar.',
             ], self::HTTP_FORBIDDEN);
         }
 

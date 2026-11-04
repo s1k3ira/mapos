@@ -100,6 +100,35 @@ class Produtos_model extends CI_Model
         return false;
     }
 
+    /**
+     * Apaga o produto e as linhas dele em produtos_os e itens_de_vendas numa transação: tudo ou nada.
+     * Devolve false (e não altera nada) se o registro não existe ou o banco falha.
+     */
+    public function excluirComDependentes(int $idProduto): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $this->db->where('produtos_id', $idProduto)->delete('produtos_os');
+            $this->db->where('produtos_id', $idProduto)->delete('itens_de_vendas');
+            $this->db->where('idProdutos', $idProduto)->delete('produtos');
+            $apagou = $this->db->affected_rows() === 1;
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_produto id=%d', $idProduto));
+
+        return false;
+    }
+
     public function count($table)
     {
         return $this->db->count_all($table);

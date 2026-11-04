@@ -236,11 +236,23 @@ final class AreaDoClienteTest extends MaposTestCase
         $this->assertMatchesRegularExpression('#<nav class="ml-2 hidden lg:block"#', $html, 'Top Nav a partir de lg; abaixo, a tabbar.');
         $this->assertDoesNotMatchRegularExpression('#rounded-md px-3(?! whitespace-nowrap)[^"]*text-on-dark-muted#', $html, 'Rótulos da Top Nav numa linha só.');
         $this->assertStringNotContainsString('>Ordens de serviço</a>', $html, 'Top Nav com os rótulos curtos.');
-        $this->assertStringContainsString('href="http://mapos.test/index.php/mine/sair"', $html);
+        $this->assertMatchesRegularExpression('#<form method="post" action="http://mapos.test/index.php/mine/sair" data-module="layout/sair">\s*<input type="hidden" name="MAPOS_TOKEN" value="hash-csrf">\s*<button class="[^"]*"[^>]*type="submit"[^>]*>.*?Sair#s', $html, 'Sair é formulário POST com CSRF.');
+        $this->assertStringNotContainsString('href="http://mapos.test/index.php/mine/sair"', $html);
         $this->assertStringNotContainsString('login/sair', $html, 'Sair da área do cliente, não do painel.');
         $this->assertSame(2, substr_count($html, 'bg-primary text-on-primary text-button-cap'), 'Só "Abrir OS" é button-primary (texto e só ícone).');
         $this->assertStringContainsString('Olá, Ana', $html);
         $this->assertStringContainsString('Nenhuma ordem de serviço ainda', $html);
+    }
+
+    public function testContaSaiPorFormularioPost(): void
+    {
+        $html = $this->renderizar('conecte/conta', ['cliente' => (object) [
+            'nomeCliente' => 'Ana', 'documento' => '', 'contato' => '', 'dataCadastro' => '2026-01-02', 'email' => 'ana@x.com',
+            'celular' => '', 'telefone' => '', 'rua' => '', 'numero' => '', 'complemento' => '', 'bairro' => '', 'cidade' => '', 'estado' => '', 'cep' => '',
+        ]]);
+
+        $this->assertMatchesRegularExpression('#<form method="post" action="http://mapos.test/index.php/mine/sair" data-module="layout/sair">\s*<input type="hidden" name="MAPOS_TOKEN" value="hash-csrf">\s*<button type="submit" class="[^"]*min-h-12[^"]*">.*?<span class="flex-1">Sair</span>#s', $html);
+        $this->assertStringNotContainsString('href="http://mapos.test/index.php/mine/sair"', $html);
     }
 
     public function testListaDeOsComStatusEAcoes(): void

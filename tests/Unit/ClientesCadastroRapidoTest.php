@@ -54,7 +54,7 @@ final class ClientesCadastroRapidoTest extends MaposTestCase
     private function criarBanco(): void
     {
         $this->db->query('CREATE TABLE clientes (idClientes INTEGER PRIMARY KEY AUTOINCREMENT, nomeCliente TEXT, contato TEXT, documento TEXT, telefone TEXT, celular TEXT, email TEXT,
-            cep TEXT, rua TEXT, numero TEXT, complemento TEXT, bairro TEXT, cidade TEXT, estado TEXT, pessoa_fisica INTEGER, fornecedor INTEGER, senha TEXT, dataCadastro TEXT)');
+            cep TEXT, rua TEXT, numero TEXT, complemento TEXT, bairro TEXT, cidade TEXT, estado TEXT, pessoa_fisica INTEGER, fornecedor INTEGER, senha TEXT, dataCadastro TEXT, senha_trocar INTEGER DEFAULT 0, sessao_versao INTEGER DEFAULT 0, token_versao INTEGER DEFAULT 0)');
     }
 
     private function controller(array $post, bool $permitido = true, string $metodo = 'post'): object
@@ -187,8 +187,9 @@ final class ClientesCadastroRapidoTest extends MaposTestCase
         $this->assertSame('Maria da Silva', $gravado->nomeCliente);
         $this->assertSame(date('Y-m-d'), $gravado->dataCadastro);
         $this->assertSame(1, (int) $gravado->pessoa_fisica);
-        // Sem senha no modal: a senha é a do cadastro normal, o documento só com números.
-        $this->assertTrue(password_verify('12345678909', $gravado->senha));
+        // Sem senha no modal: senha aleatória (nunca o documento) e troca no primeiro acesso.
+        $this->assertFalse(password_verify('12345678909', $gravado->senha));
+        $this->assertSame(1, (int) $this->db->query('SELECT senha_trocar FROM clientes WHERE idClientes = 1')->row()->senha_trocar);
     }
 
     public function testSenhaDoPostEhIgnorada(): void
@@ -201,7 +202,7 @@ final class ClientesCadastroRapidoTest extends MaposTestCase
         $this->assertSame(201, $this->resposta($controller)[0]);
         $gravado = $this->db->query('SELECT senha FROM clientes')->row();
         $this->assertFalse(password_verify('hackeada', $gravado->senha), 'A senha do POST é ignorada.');
-        $this->assertTrue(password_verify('12345678909', $gravado->senha));
+        $this->assertFalse(password_verify('12345678909', $gravado->senha));
     }
 
     public function testSemNomeDa422ComOErroNoCampoENaoGrava(): void

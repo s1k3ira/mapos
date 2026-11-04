@@ -294,12 +294,14 @@ class Mapos extends MY_Controller
 
         // A senha também na ativação (#2879): num grupo que exige o 2FA, quem tem só a
         // senha de outra pessoa não pode cadastrar o próprio autenticador e trancá-la fora.
-        if (! password_verify((string) $this->input->post('senha'), $usuario->senha)) {
-            return $this->telaDoisFatores(['senha_ativar' => 'A senha não confere.']);
+        if ($erro = $this->confirmarSenhaDoUsuario($usuario, (string) $this->input->post('senha'))) {
+            return $this->telaDoisFatores(['senha_ativar' => $erro]);
         }
 
         $passo = $this->totp->verificar($segredo, (string) $this->input->post('codigo'));
         if ($passo === null) {
+            $this->limite_login->registrarFalha('confirmacao', (string) $usuario->email, $this->input->ip_address());
+
             return $this->telaDoisFatores(['codigo' => 'Código incorreto. Confira o aplicativo e tente de novo.']);
         }
 
@@ -349,7 +351,9 @@ class Mapos extends MY_Controller
             return $this->telaDoisFatores(['senha_desativar' => $erro]);
         }
 
-        $this->mapos_model->desativarTotp((int) $usuario->idUsuarios);
+        if (! $this->mapos_model->desativarTotp((int) $usuario->idUsuarios)) {
+            return $this->telaDoisFatores(['_geral' => 'Não foi possível desativar. Tente de novo.']);
+        }
         log_info('Desativou a autenticação em dois fatores.');
         $this->session->set_flashdata('success', 'Autenticação em dois fatores desativada.');
 
@@ -374,11 +378,12 @@ class Mapos extends MY_Controller
         };
     }
 
-    private function usuarioDoDoisFatores(): object
+    protected function usuarioDoDoisFatores(): object
     {
         $usuario = $this->mapos_model->usuarioParaLoginPorId((int) $this->session->userdata('id_admin'));
         if (! $usuario) {
-            redirect(site_url('login/sair'));
+            $this->session->sess_destroy();
+            redirect(site_url('login'));
         }
 
         return $usuario;
@@ -388,7 +393,7 @@ class Mapos extends MY_Controller
      * @param  array<string, string>  $erros
      * @param  list<string>|null      $codigos  Códigos de recuperação recém-gerados (mostrados só agora)
      */
-    private function telaDoisFatores(array $erros = [], ?array $codigos = null)
+    protected function telaDoisFatores(array $erros = [], ?array $codigos = null)
     {
         $this->load->library('Totp');
         $usuario = $this->usuarioDoDoisFatores();
