@@ -194,7 +194,8 @@ phases:
           status: done
           title: 'Área do cliente: sessão revalidada, troca obrigatória, reset atômico e 401 em AJAX'
     - name: Phase 4 — Login por status, logout seguro e limite de OS do cliente
-      status: pending
+      started_at: "2026-11-04 01:03:52"
+      status: in-progress
       tasks:
         - complexity: G
           deps:
@@ -275,5 +276,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 01:03:50"
+updated_at: "2026-11-04 01:03:52"
 ---
