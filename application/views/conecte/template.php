@@ -72,7 +72,10 @@ $atual = array_values(array_filter($menu, static fn ($item) => $item['atual']))[
                     <?= component('button', $acao + ['icon_only' => true, 'class' => 'sm:hidden']) ?>
                 <?php } ?>
                 <span class="hidden max-w-48 truncate text-body-md text-on-dark-muted xl:inline" title="<?= e($cliente_nome) ?>"><?= e($cliente_nome) ?></span>
-                <?= component('button', ['label' => 'Sair', 'icon' => 'log-out', 'variant' => 'ghost-on-dark', 'href' => site_url('mine/sair'), 'icon_only' => true]) ?>
+                <form method="post" action="<?= e(site_url('mine/sair')) ?>" <?= js_module('layout/sair') ?>>
+                    <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">
+                    <?= component('button', ['label' => 'Sair', 'icon' => 'log-out', 'variant' => 'ghost-on-dark', 'type' => 'submit', 'icon_only' => true]) ?>
+                </form>
             </div>
         </div>
     </header>
