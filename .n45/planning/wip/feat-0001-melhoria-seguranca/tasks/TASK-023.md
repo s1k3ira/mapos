@@ -3,63 +3,65 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 22:58:04"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAccessTokenDoClienteDuraNoMaximoUmaHora tests/Unit/ApiClienteTokensTest.php
       text: Login do cliente com API_TOKEN_EXPIRE_TIME=2592000 devolve expires_in 3600, JWT com exp - iat = 3600 e sid, e grava refresh com tipo cliente
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLoginInformaTrocaDeSenhaObrigatoria tests/Unit/ApiClienteTokensTest.php
       text: Login de cliente com senha_trocar 1 devolve troca_de_senha_obrigatoria true
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLoginSemRefreshResponde503 tests/Unit/ApiClienteTokensTest.php
       text: Login sem refresh disponível responde 503 sem access token
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRefreshDoClienteGiraOPar tests/Unit/ApiClienteTokensTest.php
       text: POST client/refresh com refresh válido devolve par novo com o mesmo sid
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testReusoDoRefreshRevogaAFamilia tests/Unit/ApiClienteTokensTest.php
       text: Refresh reutilizado após a tolerância responde 401, revoga a família e o access token daquele sid passa a receber 401
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRefreshNaoCruzaTipos tests/Unit/ApiClienteTokensTest.php
       text: Refresh de operador em client/refresh responde 401 sem consumir o token, e refresh de cliente não gira como usuario
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRefreshDeClienteExcluidoResponde401 tests/Unit/ApiClienteTokensTest.php
       text: Refresh de cliente excluído responde 401 e revoga os refresh dele
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLogoutRevogaASessao tests/Unit/ApiClienteTokensTest.php
       text: POST client/logout responde 204 e o refresh seguinte com o mesmo token responde 401; sem corpo também 204
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLoggedClientResponde401EmTodaFalhaDeToken tests/Unit/ApiClienteTokensTest.php
       text: logged_client responde 401 sem header, com token inválido, de operador, sem sid, de família revogada e com tv antigo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaPendenteBloqueiaExcetoQuemPermite tests/Unit/ApiClienteTokensTest.php
       text: Cliente com senha_trocar 1 recebe 403 code troca_de_senha_obrigatoria em logged_client() e passa em logged_client(true)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaComSenhaAtualErradaResponde422 tests/Unit/ApiClienteTokensTest.php
       text: PUT client/password com senha atual errada responde 422 erros.senha_atual e conta 1 falha no escopo confirmacao
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaComSenhaNovaInvalidaResponde422 tests/Unit/ApiClienteTokensTest.php
       text: PUT client/password com senha nova curta ou igual à atual responde 422 erros.senha_nova; a curta não conta falha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaBloqueadaResponde429 tests/Unit/ApiClienteTokensTest.php
       text: PUT client/password com o escopo confirmacao bloqueado responde 429 com Retry-After
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaDeSenhaPelaApiRenovaOsTokens tests/Unit/ApiClienteTokensTest.php
       text: PUT client/password válido zera senha_trocar, incrementa versões, devolve par novo que funciona e o access token antigo passa a 401
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaComFalhaResponde500 tests/Unit/ApiClienteTokensTest.php
       text: PUT client/password com registrarTrocaDeSenha falso responde 500 'Não foi possível alterar a senha.'
-    - done: false
+    - done: true
       test: grep -q "api/v1/client/refresh'\] = 'api/v1/client/ClientLoginController/refresh'" application/config/routes_api.php && grep -q "api/v1/client/logout'\] = 'api/v1/client/ClientLoginController/logout'" application/config/routes_api.php && grep -q "api/v1/client/password'\] = 'api/v1/client/ClientLoginController/password'" application/config/routes_api.php
       text: As três rotas novas estão em routes_api.php
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiClienteTokensTest.php tests/Unit/ApiAutenticacaoTest.php tests/Unit/ApiBaseTest.php tests/Unit/ApiDesligadaTest.php tests/Unit/LimiteLoginTest.php tests/Unit/SessaoELimiteTest.php
       text: Suítes da API passam com o logged_client novo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/libraries/REST_Controller.php application/controllers/api/v1/client/ClientLoginController.php application/config/routes_api.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-003
     - TASK-009
+diff_base: 91044283dc9238333d7cd09809486247f5c7fecf
+diff_tip: bfe00b36514849eb18a94dd20c663b3756e06117
 files:
     - application/libraries/REST_Controller.php
     - application/controllers/api/v1/client/ClientLoginController.php
@@ -68,18 +70,29 @@ files:
 id: TASK-023
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome TASK-023 (backend)
+
+    **Endpoints (API do cliente, só com API_ENABLED=true)**
+    - `POST /api/v1/client/auth` `{email,password}` -> 200 `{status,message,result:{access_token,refresh_token,token_type:'Bearer',expires_in:3600,troca_de_senha_obrigatoria}}`; 401 genérico; 429 + Retry-After; 503 sem refresh.
+    - `POST /api/v1/client/refresh` `{refresh_token}` -> 200 par novo (mesmo `sid`); 401 `Faça o login novamente!` (inválido/expirado/revogado/reutilizado/de operador/cliente excluído).
+    - `POST /api/v1/client/logout` `{refresh_token}` -> 204 sempre; revoga a família.
+    - `PUT /api/v1/client/password` (Bearer; vale com troca pendente) `{senha_atual,senha_nova}` -> 200 par novo; 401; 422 `{message:'Dados inválidos.',erros:{senha_atual|senha_nova}}`; 429 + Retry-After; 500.
+
+    **Símbolos reutilizáveis**
+    - `REST_Controller::logged_client(bool $permitirTrocaPendente = false)`: 401 em toda falha de token (sem `sid`, família revogada, `tv` antigo, tipo errado); 403 `{code:'troca_de_senha_obrigatoria'}` com `senha_trocar=1`. Retorna objeto com `->usuario` e `->data`.
+    - Access token do cliente: JWT de 1 h com `uid,nome,email,type,tv,sid`. Tokens sem `sid` (anteriores) são recusados: breaking change.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ApiClienteTokensTest.php tests/Unit/ApiAutenticacaoTest.php tests/Unit/ApiBaseTest.php tests/Unit/ApiDesligadaTest.php tests/Unit/LimiteLoginTest.php tests/Unit/SessaoELimiteTest.php
 title: 'Tokens da API do cliente: 1 h, refresh, logout e troca de senha'
-updated_at: "2026-11-03 22:58:04"
+updated_at: "2026-11-03 23:44:41"
 ---
 ## Contexto
 

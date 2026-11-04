@@ -3,75 +3,77 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 22:52:58"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testNovoSemSenhaUsaASenhaGeradaENuncaODocumento tests/Unit/ClientesSenhaInicialTest.php
       text: clienteDadosDoFormulario(novo, sem senha, senha gerada 'Abc23456789Defgh') grava o hash da senha gerada e password_verify('12345678909') é falso
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testNovoSemSenhaNemGeradaFicaComSenhaDesconhecida tests/Unit/ClientesSenhaInicialTest.php
       text: clienteDadosDoFormulario(novo, sem senha, sem senha gerada) não aceita o documento nem string vazia como senha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCadastroSemSenhaMostraASenhaUmaVezEMarcaTroca tests/Unit/ClientesSenhaInicialTest.php
       text: POST clientes/adicionar sem senha grava senha_trocar 1, renderiza clientes/senha_inicial com senha de 16 caracteres do alfabeto, emailEnviado true, Cache-Control no-store, sem flashdata e sem a senha em log
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNoEnvioMostraTextoDeFalha tests/Unit/ClientesSenhaInicialTest.php
       text: Falha no envio do e-mail mostra a tela com emailEnviado false
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCadastroComSenhaDigitadaMarcaTrocaERedireciona tests/Unit/ClientesSenhaInicialTest.php
       text: Cadastro com senha digitada grava senha_trocar 1, hash da senha digitada e redireciona sem tela de senha nem envio
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCadastroInvalidoNaoGeraNemEnviaSenha tests/Unit/ClientesSenhaInicialTest.php
       text: Cadastro com erro de validação não grava cliente nem chama o envio
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCadastroRapidoGeraSenhaSemExibirNemEnviar tests/Unit/ClientesSenhaInicialTest.php
       text: Cadastro rápido grava senha_trocar 1, senha diferente do documento, 201 sem senha no corpo e sem chamar o envio
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSenhaInicialNaoPassaPelaFila tests/Unit/ClientesSenhaInicialTest.php
       text: Nenhuma linha é criada em email_queue no cadastro com senha gerada
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEdicaoComSenhaDerrubaSessoesEExigeTroca tests/Unit/ClientesSenhaInicialTest.php
       text: 'Edição pelo operador com senha passa por registrarTrocaDeSenha: senha_trocar 1, sessao_versao e token_versao +1 e refresh tipo cliente revogado'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEdicaoSemSenhaNaoMexeNasVersoes tests/Unit/ClientesSenhaInicialTest.php
       text: Edição sem senha mantém sessao_versao e token_versao
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEnvioSemEmailOuSemEmitenteNaoChamaSend tests/Unit/ClientesSenhaInicialTest.php
       text: clienteEnviarSenhaInicial devolve false sem chamar send quando o cliente não tem e-mail válido ou não há emitente
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEnvioComExcecaoLogaSemASenha tests/Unit/ClientesSenhaInicialTest.php
       text: clienteEnviarSenhaInicial com exceção no send devolve false e loga 'email senha_inicial falha cliente=' sem o HTML
-    - done: false
+    - done: true
       test: grep -qE 'send\(true\)' application/helpers/clientes_helper.php
       text: clienteEnviarSenhaInicial envia pelo SMTP direto (send(true)), fora da fila
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDoClienteApagaTudoDeleERevogaRefresh tests/Unit/ClientesSenhaInicialTest.php
       text: Clientes_model::excluirComDependentes(3) apaga cliente, OS, itens, vendas e itens de venda do cliente 3, mantém o cliente 4 e revoga só os refresh tipo cliente do 3
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaExclusaoDoClienteMantemTudo tests/Unit/ClientesSenhaInicialTest.php
       text: Falha no DELETE de clientes devolve false, mantém tudo, não revoga refresh e loga 'transacao rollback operacao=excluir_cliente id=3'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRemoverOsDoClienteComFalhaLogaEDevolveFalse tests/Unit/ClientesSenhaInicialTest.php
       text: removeClientOs com falha no DELETE de os devolve false e loga 'cliente remover_os falha os='
-    - done: false
+    - done: true
       test: '! grep -nE ''catch \(Exception'' application/models/Clientes_model.php'
       text: Clientes_model não engole mais erro em catch (Exception)
-    - done: false
+    - done: true
       test: grep -q 'clientes_model->excluirComDependentes(' application/controllers/Clientes.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Clientes.php
       text: Clientes::excluir usa excluirComDependentes e mostra 'Não foi possível excluir. Nada foi alterado.' na falha
-    - done: false
+    - done: true
       test: '! grep -nE ''password_hash\(\$documento'' application/helpers/clientes_helper.php'
       text: O documento não é mais usado como senha no helper
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ClientesFormularioTest.php tests/Unit/ClientesCadastroRapidoTest.php tests/Unit/ClientesSenhaInicialTest.php tests/Unit/SenhaInicialViewTest.php tests/Unit/AreaDoClienteTest.php
       text: Testes antigos de cliente atualizados passam (sem senha-documento)
-    - done: false
+    - done: true
       test: php scripts/check-escape.php && php scripts/check-inline-script.php
       text: View do e-mail passa nos guards sem subir baseline
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/helpers/clientes_helper.php application/controllers/Clientes.php application/models/Clientes_model.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-009
     - TASK-008
+diff_base: 1c5a547b582c703e9f0a4a8250c9f6950a33359f
+diff_tip: b59833a0af0d31639ab12939859239dd9492718b
 files:
     - application/helpers/clientes_helper.php
     - application/controllers/Clientes.php
@@ -83,18 +85,35 @@ files:
 id: TASK-019
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    # TASK-019 — Outcome
+
+    **Helper `application/helpers/clientes_helper.php`**
+    - `clienteDadosDoFormulario($post, bool $novo, ?string $senhaGerada = null): array` — cadastro novo sem senha grava o hash de `$senhaGerada` (ou de valor aleatório desconhecido se ausente); o documento nunca é a senha. Não grava `senha_trocar` (quem marca é o controller).
+    - `clienteEnviarSenhaInicial(object $email, ?object $emitente, object $cliente, string $html): bool` — envio síncrono via `send(true)` (fora de `email_queue`). `false` sem e-mail válido, sem emitente ou em falha/exceção; log de falha `email senha_inicial falha cliente=<id> erro=<Classe|envio>`, sem HTML, senha ou e-mail.
+
+    **Model `Clientes_model`**
+    - `excluirComDependentes(int $idCliente): bool` — transação: apaga OS (servicos_os, produtos_os, anotacoes_os e os_historico quando existem), vendas, itens_de_vendas e o cliente; revoga refresh tokens `tipo='cliente'` do cliente. `false` + log `transacao rollback operacao=excluir_cliente id=<id>` em falha ou cliente inexistente (nada muda).
+    - `removeClientOs()` / `removeClientVendas()` devolvem `false` com log (`cliente remover_os falha os=<id>` / `cliente remover_venda falha venda=<id>`); sem `catch (Exception)`.
+
+    **Controller `Clientes`**
+    - `POST clientes/adicionar` sem senha: grava `senha_trocar=1`, renderiza `clientes/senha_inicial` (`cliente`, `senhaInicial` 16 chars, `emailEnviado`) com `Cache-Control: no-store`, sem redirect/flashdata, e-mail enviado síncrono. Com senha digitada: `senha_trocar=1`, redirect com flashdata `Cliente cadastrado com sucesso!`.
+    - `POST clientes/cadastroRapido`: 201 inalterado, senha aleatória, `senha_trocar=1`, sem exibir nem enviar.
+    - `POST clientes/editar/{id}` com senha: `registrarTrocaDeSenha($id, $hash, true)`; falha → erro `_geral` `Não foi possível salvar a senha. Tente de novo.`
+    - `POST clientes/excluir`: usa `excluirComDependentes`; falha → flashdata `Não foi possível excluir. Nada foi alterado.`
+
+    **View** `application/views/clientes/emails/senha_inicial.php` (`$cliente`, `$emitente`, `$senha`, `$urlAcesso`, escapada com `e()`).
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ClientesSenhaInicialTest.php tests/Unit/ClientesFormularioTest.php tests/Unit/ClientesCadastroRapidoTest.php tests/Unit/SenhaInicialViewTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/SenhaClienteTest.php
 title: Cadastro de cliente pelo operador com senha inicial e exclusão em transação
-updated_at: "2026-11-03 22:52:58"
+updated_at: "2026-11-03 23:46:27"
 ---
 ## Contexto
 

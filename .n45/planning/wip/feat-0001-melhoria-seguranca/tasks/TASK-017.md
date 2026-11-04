@@ -3,38 +3,40 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 22:50:15"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDoProdutoApagaSoOQueEDele tests/Unit/ProdutosServicosExclusaoTest.php
       text: Produtos_model::excluirComDependentes(7) devolve true e apaga o produto 7 com suas 2 linhas de produtos_os e 1 de itens_de_vendas, mantendo o produto 8 e as linhas dele
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaExclusaoDoProdutoMantemTudo tests/Unit/ProdutosServicosExclusaoTest.php
       text: Falha simulada no DELETE de produtos devolve false, mantém 2 linhas em produtos_os, 1 em itens_de_vendas e o produto 7, e loga 'transacao rollback operacao=excluir_produto id=7'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeProdutoInexistenteDevolveFalse tests/Unit/ProdutosServicosExclusaoTest.php
       text: Produto inexistente (99) devolve false e loga 'transacao rollback operacao=excluir_produto id=99'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDoServicoApagaSoOQueEDele tests/Unit/ProdutosServicosExclusaoTest.php
       text: Servicos_model::excluirComDependentes(4) devolve true e apaga o serviço 4 com suas 3 linhas de servicos_os, mantendo o serviço 5 e a linha dele
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNaExclusaoDoServicoMantemTudo tests/Unit/ProdutosServicosExclusaoTest.php
       text: Falha simulada no DELETE de servicos devolve false, mantém as 3 linhas de servicos_os e o serviço 4, e loga 'transacao rollback operacao=excluir_servico id=4'
-    - done: false
+    - done: true
       test: grep -q 'produtos_model->excluirComDependentes(' application/controllers/Produtos.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Produtos.php
       text: Produtos::excluir chama excluirComDependentes e, com false, grava a mensagem 'Não foi possível excluir. Nada foi alterado.'
-    - done: false
+    - done: true
       test: grep -q 'servicos_model->excluirComDependentes(' application/controllers/Servicos.php && grep -q 'Não foi possível excluir. Nada foi alterado.' application/controllers/Servicos.php
       text: Servicos::excluir chama excluirComDependentes e, com false, grava a mensagem 'Não foi possível excluir. Nada foi alterado.'
-    - done: false
+    - done: true
       test: '! grep -nE "delete\(''(produtos_os|itens_de_vendas|servicos_os)''" application/controllers/Produtos.php application/controllers/Servicos.php'
       text: Os controllers não apagam mais as tabelas filhas por delete() solto no excluir()
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ProdutosServicosExclusaoTest.php && ! grep -n 'assertTrue(true)' tests/Unit/ProdutosServicosExclusaoTest.php
       text: Suíte ProdutosServicosExclusaoTest passa inteira e cada teste asserta contagens exatas (assertSame), sem assertTrue(true)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/models/Produtos_model.php application/models/Servicos_model.php application/controllers/Produtos.php application/controllers/Servicos.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-001
+diff_base: bfe00b36514849eb18a94dd20c663b3756e06117
+diff_tip: 1c5a547b582c703e9f0a4a8250c9f6950a33359f
 files:
     - application/models/Produtos_model.php
     - application/models/Servicos_model.php
@@ -44,18 +46,29 @@ files:
 id: TASK-017
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Backend
+
+    Métodos de model (consumidos pela TASK-021, API de produtos/serviços):
+
+    - `Produtos_model::excluirComDependentes(int $idProduto): bool` — transação: apaga `produtos_os`, `itens_de_vendas` e `produtos` do id. `true` = tudo apagado e commitado. `false` = produto inexistente (affected_rows != 1), falha de query (`trans_status()`) ou `\Throwable`; rollback e `log_message('error', 'transacao rollback operacao=excluir_produto id=<id>')`.
+    - `Servicos_model::excluirComDependentes(int $idServico): bool` — idem para `servicos_os` e `servicos`; operação de log `excluir_servico`.
+
+    Controllers do painel:
+
+    - `POST /produtos/excluir` e `POST /servicos/excluir`: com `false`, flash `error` = `Não foi possível excluir. Nada foi alterado.`, sem `log_info`, redirect para a listagem com filtros; com `true`, `log_info` + flash `success`. `Servicos::excluir` valida `id` como inteiro (`<= 0` → `Erro ao tentar excluir serviço.`).
+    - `delete()` dos dois models mantido.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ProdutosServicosExclusaoTest.php tests/Unit/ProdutosTest.php tests/Unit/ServicosTest.php
 title: Exclusão de produtos e serviços em transação
-updated_at: "2026-11-03 22:50:15"
+updated_at: "2026-11-03 23:45:33"
 ---
 ## Contexto
 

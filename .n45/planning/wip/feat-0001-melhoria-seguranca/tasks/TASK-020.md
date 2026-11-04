@@ -3,69 +3,71 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 22:54:26"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutEmOsFechadaResponde403 tests/Unit/ApiOsTest.php
       text: PUT em OS Faturado/faturado=1 e em OS Cancelado responde 403 'OS Faturada/Cancelada não pode ser alterada.' e a OS fica intacta
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutEmOsInexistenteResponde404 tests/Unit/ApiOsTest.php
       text: PUT em OS inexistente responde 404 'OS não encontrada.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testPutNaoAceitaStatusFaturado|testPutRecusaStatusDesconhecido' tests/Unit/ApiOsTest.php
       text: PUT com status Faturado responde 422 com erros.status 'Para faturar a OS, use o faturamento no painel.' e status inválido responde 422 'Status inválido.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutIgnoraCamposForaDaAllowList tests/Unit/ApiOsTest.php
       text: PUT com faturado, valorTotal, lancamento e idOs no corpo não altera esses campos no banco
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostSempreCriaOsNaoFaturada tests/Unit/ApiOsTest.php
       text: POST com faturado 1 no corpo cria a OS com faturado 0
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDatasInvalidasDoCorpoRespondem422 tests/Unit/ApiOsTest.php
       text: dataInicial 31/02/2026 no PUT e 2026-11-01 no POST respondem 422 erros.dataInicial sem Deprecated nem warning
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutSemDataFinalUsaHoje tests/Unit/ApiOsTest.php
       text: PUT sem dataFinal grava dataInicial 2026-11-01 e dataFinal de hoje
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFiltroDeDatasValidado tests/Unit/ApiOsTest.php
       text: GET com from=31/02/2026 e from=2026-01-01 responde 422 erros.from; janela de 400 dias responde 422 erros.to 'O período pode ter no máximo 366 dias.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPaginacaoDaListagem tests/Unit/ApiOsTest.php
       text: GET com perPage=1000000 limita a 100, perPage=abc responde 422 e page=2&perPage=10 chega ao model com offset 20
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSemPermissaoResponde403 tests/Unit/ApiOsTest.php
       text: Sem permissão a rota responde 403 (index_get, index_put, index_delete, produtos_post)
-    - done: false
+    - done: true
       test: '! grep -n ''HTTP_UNAUTHORIZED'' application/controllers/api/v1/OsController.php'
       text: OsController não responde mais 401 por falta de permissão
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testInsercaoDeItemDevolveOIdInserido tests/Unit/ApiOsTest.php
       text: produtos_post e anotacoes_post devolvem o id da linha inserida pela própria requisição (insert_id)
-    - done: false
+    - done: true
       test: '! grep -rn ''lastRow('' application/controllers/api/v1/OsController.php'
       text: Nenhum controller usa lastRow(
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoComFalhaNaoApagaNada tests/Unit/ApiOsTest.php
       text: DELETE com falha simulada no DELETE de os responde 500 'Não foi possível excluir. Nada foi alterado.' e mantém OS, itens e anotações
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeOsAbertaApagaTudo tests/Unit/ApiOsTest.php
       text: DELETE de OS aberta sem cobrança apaga OS e itens e responde 200
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoComCobrancaAtivaResponde400 tests/Unit/ApiOsTest.php
       text: DELETE com cobrança não cancelada responde 400 e não apaga nada
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testOsDadosDaApiAllowList tests/Unit/ApiOsTest.php
       text: osDadosDaApi lê só os campos da allow-list e não devolve faturado na edição
-    - done: false
+    - done: true
       test: '! grep -n ''@unlink'' application/controllers/api/v1/OsController.php'
       text: anexos_delete não silencia falha com @unlink
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiOsTest.php tests/Unit/ApiOsSegurancaTest.php
       text: ApiOsSegurancaTest atualizado (403 sem permissão) e ApiOsTest passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/api/v1/OsController.php application/helpers/os_helper.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-003
     - TASK-015
+diff_base: b59833a0af0d31639ab12939859239dd9492718b
+diff_tip: 5fb06281faf704371d7d8a947b1548ea4989b425
 files:
     - application/controllers/api/v1/OsController.php
     - application/helpers/os_helper.php
@@ -74,18 +76,27 @@ files:
 id: TASK-020
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **API de OS (`/api/v1/os`) — contrato entregue (backend)**
+
+    - `PUT /api/v1/os/{id}`: 404 `OS não encontrada.`; 403 `OS Faturada/Cancelada não pode ser alterada.`; 400 obrigatórios; 422 `{message:'Dados inválidos.', erros:{dataInicial|dataFinal|status}}` (datas dd/mm/aaaa; `Faturado` recusado; status fora de `OS_STATUS_VARIANTES` = `Status inválido.`); 200 grava só a allow-list (nunca `faturado`, `valorTotal`, `lancamento`, `idOs`, descontos). `dataFinal` vazia = hoje.
+    - `POST /api/v1/os`: mesma validação 422; sempre cria com `faturado = 0`.
+    - `GET /api/v1/os`: paginação via `paginacaoDaApi()` (`perPage` máx. 100, offset = page*perPage; inválido = 422); `from`/`to` dd/mm/aaaa, 422 `Datas inválidas.` com `erros.from|to`; janela > 366 dias = 422 `erros.to`.
+    - `DELETE /api/v1/os/{id}`: 400 cobrança ativa / fatura baixada; transacional via `Os_model::excluirComDependentes` (estoque devolvido dentro da transação); falha = 500 `Não foi possível excluir. Nada foi alterado.`; arquivos apagados com `armazenamentoApagar` após o commit; 200 `OS excluída com sucesso!`.
+    - Sem permissão (`vOs`/`aOs`/`eOs`/`dOs`) = 403 em todas as rotas (`exigirPermissao`).
+    - `produtos_post`/`servicos_post`/`anotacoes_post` devolvem o id de `$this->db->insert_id()`; `lastRow()` removido. `anexos_delete` usa `armazenamentoApagar`.
+    - Reutilizável: `osDadosDaApi(array $corpo, bool $novo): array{ok, erros, dados}` em `os_helper`.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ApiOsTest.php tests/Unit/ApiOsSegurancaTest.php tests/Unit/ApiBaseTest.php tests/Unit/OsFormularioTest.php
 title: 'API de OS: OS fechada, allow-list, datas, paginação e exclusão'
-updated_at: "2026-11-03 22:54:26"
+updated_at: "2026-11-03 23:49:19"
 ---
 ## Contexto
 

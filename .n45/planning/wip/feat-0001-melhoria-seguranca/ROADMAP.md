@@ -134,7 +134,7 @@ phases:
             - TASK-001
           id: TASK-017
           persona: backend
-          status: pending
+          status: done
           title: Exclusão de produtos e serviços em transação
         - complexity: M
           deps:
@@ -149,7 +149,7 @@ phases:
             - TASK-008
           id: TASK-019
           persona: backend
-          status: pending
+          status: done
           title: Cadastro de cliente pelo operador com senha inicial e exclusão em transação
         - complexity: G
           deps:
@@ -157,7 +157,7 @@ phases:
             - TASK-015
           id: TASK-020
           persona: backend
-          status: pending
+          status: done
           title: 'API de OS: OS fechada, allow-list, datas, paginação e exclusão'
         - complexity: G
           deps:
@@ -182,7 +182,7 @@ phases:
             - TASK-009
           id: TASK-023
           persona: backend
-          status: pending
+          status: done
           title: 'Tokens da API do cliente: 1 h, refresh, logout e troca de senha'
         - complexity: G
           deps:
@@ -274,5 +274,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 22:59:46"
+updated_at: "2026-11-03 23:49:01"
 ---
