@@ -269,7 +269,8 @@ class Mapos extends MY_Controller
     {
         $usuario = $this->mapos_model->usuarioParaLoginPorId((int) $this->session->userdata('id_admin'));
         if (! $usuario) {
-            redirect(site_url('login/sair'));
+            $this->session->sess_destroy();
+            redirect(site_url('login'));
         }
 
         return $usuario;
