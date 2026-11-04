@@ -2375,20 +2375,21 @@ abstract class REST_Controller extends CI_Controller
         return $this->refresh_token->familiaAtiva($sid);
     }
 
-    public function logged_client()
+    /**
+     * Cliente autenticado pelo access token da API da área do cliente.
+     *
+     * Toda falha de token é 401. Token sem `sid` (emitido antes do refresh
+     * token) ou de sessão revogada também é recusado. Com a troca de senha
+     * obrigatória pendente (`senha_trocar = 1`) responde 403, exceto nas rotas
+     * que passam `$permitirTrocaPendente` (a própria troca de senha).
+     */
+    public function logged_client(bool $permitirTrocaPendente = false)
     {
-        $headers = $this->input->request_headers();
-
-        $this->CI = &get_instance();
-        $this->CI->load->config('jwt');
-        $token_header = $this->config->item('token_header');
-
         if (! isset($_SERVER["HTTP_AUTHORIZATION"])) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça login para acessar a API.',
             ], REST_Controller::HTTP_UNAUTHORIZED);
-            $this->response(['Authentication failed'], REST_Controller::HTTP_OK);
         }
 
         $this->load->library('Authorization_Token');
@@ -2399,7 +2400,7 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         // Só tokens emitidos pelo login da área do cliente valem aqui.
@@ -2407,17 +2408,30 @@ abstract class REST_Controller extends CI_Controller
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
-            ], self::HTTP_FORBIDDEN);
+            ], self::HTTP_UNAUTHORIZED);
         }
 
         $this->load->model('Clientes_model');
         $this->client = $decodedToken;
         $this->client->usuario = $this->Clientes_model->getById($decodedToken->data->uid);
 
-        if (! $this->client->usuario || ! Authorization_Token::versaoVigente($decodedToken->data, $this->authorization_token->versaoAtual('clientes', 'idClientes', (int) $decodedToken->data->uid))) {
+        // Sem `sid` o token não tem sessão que se possa revogar (emitido antes do
+        // refresh token, com até 30 dias): o app faz o login de novo.
+        if (! $this->client->usuario
+            || ! Authorization_Token::versaoVigente($decodedToken->data, $this->authorization_token->versaoAtual('clientes', 'idClientes', (int) $decodedToken->data->uid))
+            || (string) ($decodedToken->data->sid ?? '') === ''
+            || ! $this->sessaoDoTokenAtiva($decodedToken->data)) {
             $this->response([
                 'status' => false,
                 'message' => 'Faça o login novamente!',
+            ], self::HTTP_UNAUTHORIZED);
+        }
+
+        if ((int) ($this->client->usuario->senha_trocar ?? 0) === 1 && ! $permitirTrocaPendente) {
+            $this->response([
+                'status' => false,
+                'code' => 'troca_de_senha_obrigatoria',
+                'message' => 'Defina uma nova senha antes de continuar.',
             ], self::HTTP_FORBIDDEN);
         }
 
