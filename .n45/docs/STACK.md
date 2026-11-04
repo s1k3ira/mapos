@@ -39,6 +39,7 @@ layers:
         backend_cmd: composer test
         frontend_cmd: npm run test:js
         guards: php scripts/check-escape.php e php scripts/check-inline-script.php (rodam no CI)
+        smoke_cmd: scripts/smoke-seguranca.sh (12 verificações de segurança no Docker, 0 ok, 1 falhou, 2 ambiente fora)
         static_cmd: composer analyse
       name: tests
       technology: PHPUnit 12 + node:test
@@ -55,7 +56,7 @@ layers:
       name: auth
       technology: Sessão CodeIgniter + JWT
 n45_version: 1.1.0
-updated_at: "2026-11-03 14:47:08"
+updated_at: "2026-11-04 07:24:51"
 ---
 
 ## Notas

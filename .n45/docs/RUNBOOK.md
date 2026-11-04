@@ -31,7 +31,7 @@ stop: cd docker && docker-compose down
 test:
     all: composer test && composer analyse && npm run test:js
     unit: composer test
-updated_at: "2026-11-03 14:49:58"
+updated_at: "2026-11-04 07:24:52"
 url: http://localhost:8000/
 ---
 O `setup` instala só as dependências PHP; o banco e o `application/.env` nascem pelo instalador web (passo a passo abaixo). `start` e `stop` valem para o ambiente Docker; fora dele, o servidor é Apache ou Nginx apontando para a raiz do projeto.
@@ -118,6 +118,7 @@ Healthcheck da aplicação: `curl -sf -o /dev/null http://localhost:8000/`.
 | Serviço | Endpoint | Método | Resposta esperada |
 | ------- | -------- | ------ | ----------------- |
 | Aplicação | `http://localhost:8000/` | GET | 200 ou redirecionamento para `login` (ou para o instalador antes de instalar) |
+| Smoke de segurança | `scripts/smoke-seguranca.sh` | CLI | 12 linhas `OK` e saída 0 |
 | API | `/index.php/api/v1` | GET | 401 ou 403 sem token; 404 com `API_ENABLED=false` |
 
 ## Comandos Úteis
@@ -129,6 +130,7 @@ composer analyse                   # PHPStan nível 5 com baseline
 composer format                    # php-cs-fixer
 php scripts/check-escape.php       # reprova saída sem e() nas views
 php scripts/check-inline-script.php  # reprova <script> inline novo
+scripts/smoke-seguranca.sh         # smoke de segurança no Docker (0 ok, 1 falhou, 2 ambiente fora)
 npm run test:js                    # testes de JS (node:test)
 
 # Front-end (só ao mudar view, CSS ou JS de biblioteca)
@@ -138,11 +140,12 @@ npm run watch:css                  # recompila o app.css ao editar
 # Banco
 php index.php tools migrate        # aplica as migrations pendentes (ou Configurações > Sistema)
 php index.php tools migration "nome"   # cria uma migration nova
-php index.php tools seed "Usuarios"    # roda um seed de desenvolvimento
+php index.php tools seed "Usuarios"    # roda um seed de desenvolvimento (só em ENVIRONMENT development)
+php index.php tools marcarSenhasLegadas  # exige troca de senha de cliente que ainda usa o documento como senha
 
-# Cron de e-mail (ajuste o caminho do index.php)
-*/2 * * * * php /var/www/html/index.php email/process
-*/5 * * * * php /var/www/html/index.php email/retry
+# Cron de e-mail (ajuste o caminho do index.php); o retry também limpa eventos, tokens e e-mails antigos
+*/2 * * * * php /var/www/html/index.php email/process >> /var/log/cron.log 2>&1
+*/5 * * * * php /var/www/html/index.php email/retry >> /var/log/cron.log 2>&1
 
 # Logs
 tail -f application/logs/log-$(date +%F).php
@@ -154,9 +157,9 @@ docker-compose -f docker/docker-compose.yml logs -f php-fpm
 | Serviço | Finalidade | Autenticação |
 | ------- | ---------- | ------------ |
 | Servidor SMTP | Envio de e-mails do sistema | usuário e senha em `EMAIL_SMTP_*` |
-| Efí (Gerencianet) | Boleto, Pix e cobranças | client id e secret em `PAYMENT_GATEWAYS_EFI_*` |
-| Mercado Pago | Cobranças | access token em `PAYMENT_GATEWAYS_MERCADO_PAGO_*` |
-| Asaas | Cobranças | API key em `PAYMENT_GATEWAYS_ASAAS_*` |
+| Efí (Gerencianet) | Boleto, Pix e cobranças; webhook em `/webhooks/efi/<segredo>` | client id e secret em `PAYMENT_GATEWAYS_EFI_*`; `EFI_WEBHOOK_SECRET` |
+| Mercado Pago | Cobranças; webhook em `/webhooks/mercadopago` | access token em `PAYMENT_GATEWAYS_MERCADO_PAGO_*`; `MP_WEBHOOK_SECRET` |
+| Asaas | Cobranças; webhook em `/webhooks/asaas` | API key em `PAYMENT_GATEWAYS_ASAAS_*`; `ASAAS_WEBHOOK_TOKEN` |
 | GitHub Releases | Atualização do sistema (zip e SHA256) | pública, só HTTPS verificado |
 
 ## Troubleshooting
@@ -169,6 +172,9 @@ docker-compose -f docker/docker-compose.yml logs -f php-fpm
 | API responde 503 | `API_JWT_KEY` vazia, curta ou igual ao exemplo | Gerar chave nova em Configurações > Sistema ou editar o `.env` (mínimo 32 caracteres) |
 | E-mails não saem | Cron não agendado ou SMTP errado | Conferir os cron jobs e `EMAIL_SMTP_*`; ver a fila em Configurações > E-mails |
 | Cookie ou login perdido atrás de proxy | `APP_PROXY_IPS` vazio | Listar o IP do proxy em `APP_PROXY_IPS` |
+| Webhook de pagamento responde 401 ou 503 | Segredo, token ou assinatura diferente do configurado, ou gateway fora do ar | Conferir `EFI_WEBHOOK_SECRET`, `MP_WEBHOOK_SECRET` e `ASAAS_WEBHOOK_TOKEN`; no 503 o evento fica sem `processado_em` e o gateway reenvia. Ver `docs/webhooks-de-pagamento.md` |
+| Fila de e-mail parada | Lock `mapos_email_fila` preso ou reserva vencida | Esperar o ciclo `email/retry` ou destravar conforme `docs/webhooks-de-pagamento.md` |
+| Segredo da Efí aparece no log do servidor web | `access_log` registra `webhooks/efi/` | Aplicar a receita de `docs/webhooks-de-pagamento.md` (nginx ou Apache) |
 | CI falha em `check-escape` ou `check-inline-script` | Saída sem `e()` ou `<script>` inline novo | Escapar a saída ou mover o JS para `assets/js/modules`; nunca subir os baselines |
 | CI falha em CSS defasado | `assets/dist` não recompilado | `npm ci && npm run build` e commitar |
 

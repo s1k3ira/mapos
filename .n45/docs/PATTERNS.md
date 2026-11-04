@@ -29,11 +29,17 @@ patterns:
     - description: '{ result, message, erros?, html? } com 403 sem permissão ou registro fechado, 404 item de outro registro, 422 erros de campo'
       name: Response JSON do painel
       scope: response
-    - description: '{ status, message, result } por REST_Controller; erros com o código HTTP correspondente'
+    - description: '{ status, message, result } por REST_Controller; 401 sem token válido, 403 sem permissão, 422 em dado inválido, 500 em JSON para exceção'
       name: Response da API
       scope: response
     - description: Model devolve dados ou false; controller valida e decide status; erro técnico vai para log_message; página de erro sem detalhes em produção
       name: Erros por camada
+      scope: errors
+    - description: Gateways lançam GatewayRecusouException (422) ou GatewayIndisponivelException (502); texto do provedor nunca vai para mensagem nem log
+      name: Erros de gateway
+      scope: errors
+    - description: Escrita em mais de uma tabela vai em transação com rollback, log transacao rollback operacao=... e retorno false; controller nunca responde sucesso falso
+      name: Transação
       scope: errors
     - description: Grupos em config/form_validation.php aplicados por validarFormulario(grupo); mensagens em pt-BR
       name: Validação no servidor
@@ -47,10 +53,10 @@ patterns:
     - description: tests/Unit/<Assunto>Test.php estendendo MaposTestCase; métodos testComportamento em português executando o comportamento
       name: Nomenclatura de testes
       scope: testing
-    - description: MY_Controller::paginacao() com offset na URL e filtros na query string lidos por listagemFiltros() com allow-list
+    - description: MY_Controller::paginacao() com offset na URL e filtros na query string lidos por listagemFiltros() com allow-list; API por perPage (1..100) e page via paginacaoDaApi()
       name: Pagination
       scope: response
-    - description: API por IP por minuto (API_RATE_LIMIT, tabela api_rate_limit); login por Limite_login; 429 com Retry-After
+    - description: API por IP por minuto (API_RATE_LIMIT, tabela api_rate_limit); webhooks por IP (WEBHOOK_RATE_LIMIT); login por Limite_login; 429 com Retry-After
       name: Rate limiting
       scope: architecture
     - description: Cabeçalhos e CSP pelo hook security_headers; CORS da API só pelas origens de API_CORS_ORIGINS
@@ -59,7 +65,7 @@ patterns:
     - description: Proteção do CodeIgniter ligada; rotas api.* e csp/report excluídas; cookie do CSRF lido pelo JS
       name: CSRF
       scope: architecture
-    - description: Sessão no banco com cookie HttpOnly, SameSite e Secure automático; sessão revalidada no banco a cada requisição
+    - description: Sessão no banco com cookie HttpOnly, SameSite e Secure automático; sessão revalidada no banco a cada requisição; logout só por POST com CSRF
       name: Session / Cookie
       scope: architecture
     - description: Prefixo /api/v1 em routes_api.php, carregado só com API_ENABLED=true
@@ -71,13 +77,13 @@ patterns:
     - description: component() de input; form novalidate com js_module formulario/padrao; servidor sempre revalida e devolve erro por campo
       name: Formulários
       scope: forms
-    - description: get() e post() de assets/js/lib/http.js; sem jQuery
+    - description: get() e post() de assets/js/lib/http.js com timeout, sessão expirada e JSON inválido tratados; sem jQuery
       name: API client
       scope: api_client
     - description: Estados vazios distintos (nada ainda x sem resultado), toast para feedback, pill-status para estado de registro
       name: Estados de UI
       scope: ui_states
-updated_at: "2026-11-03 14:48:04"
+updated_at: "2026-11-04 07:24:51"
 ---
 
 ## Arquitetura
@@ -85,7 +91,7 @@ updated_at: "2026-11-03 14:48:04"
 **Responsabilidade de cada camada:**
 
 - Controller: estende `MY_Controller` (painel) ou `REST_Controller` (API); valida a entrada, chama model e helper, escolhe a view ou o JSON. `MY_Controller::__construct()` exige sessão, revalida o usuário no banco, exige banco atualizado, exige 2FA quando o grupo pede e confere o `permissions_map`.
-- Model (`application/models/X_model.php`): só acesso a dados com o Query Builder do CodeIgniter ou query com bindings; nunca concatena SQL com entrada do usuário.
+- Model (`application/models/X_model.php`): só acesso a dados com o Query Builder do CodeIgniter ou query com bindings; nunca concatena SQL com entrada do usuário. Exclusão e faturamento que tocam mais de uma tabela ficam em método transacional do model (`excluirComDependentes()`, `faturar()`).
 - Helper e library: regra reutilizável sem estado de requisição (`os_helper`, `financeiro_helper`, `Limite_login`, `Totp`).
 - View: PHP com Tailwind, monta a tela com `component()`; todo valor impresso passa por `e()`.
 
@@ -98,12 +104,12 @@ index.php                         front controller: carrega o .env, define ENVIR
 application/
   .env / .env.example             configuração (nunca versionar o .env)
   config/                         config.php, database.php, routes*.php, permissions_map.php, form_validation.php, hooks.php ...
-  controllers/                    controllers do painel (Os.php, Clientes.php ...), Login, Mine (área do cliente), Email (cron), Tools (CLI)
+  controllers/                    controllers do painel (Os.php, Clientes.php ...), Login, Mine (área do cliente), Webhooks (público, sem sessão nem CSRF), Email (cron), Tools (CLI)
   controllers/api/v1/             controllers REST; client/ para a API do cliente
   core/                           MY_Controller.php, MY_Security.php
   hooks/                          security_headers, pagina_de_erro, whoops, compress
   models/                         Nome_model.php
-  libraries/                      REST_Controller, Limite_login, Totp, Permission, Gateways/ ...
+  libraries/                      REST_Controller, Limite_login, Totp, Permission, Refresh_token, Retencao, MY_Email, Gateways/ (exceções tipadas em Gateways/Exceptions) ...
   helpers/                        nome_helper.php
   views/                          <controller>/ (telas), components/ (biblioteca), tema/ (moldura), entrada/ (logins), errors/
   database/migrations/            YYYYMMDDHHMMSS_descricao.php
@@ -116,9 +122,9 @@ assets/
   vendor/                         bibliotecas JS copiadas por npm run build:vendor (commitado, gerado)
 install/                          instalador web independente
 docker/                           compose de desenvolvimento (nginx, php-fpm, mysql, phpmyadmin)
-docs/                             guias (API, armazenamento, migração 4x para 5, servidor web)
+docs/                             guias (API, armazenamento, migração 4x para 5, servidor web, webhooks de pagamento)
 tests/Unit/                       testes PHPUnit; tests/js/ testes do node:test
-scripts/                          check-escape, check-inline-script, build-vendor, contraste-temas
+scripts/                          check-escape, check-inline-script, build-vendor, contraste-temas, smoke-seguranca.sh
 updates/                          SQLs de atualização das versões 3.x e 4.x
 ```
 
@@ -149,13 +155,19 @@ Regras que valem para toda mudança:
 
 **JSON do painel** (telas que mudam sem recarregar, como a OS): `{ "result": true|false, "message": "...", "erros": {campo: msg}, "html": {parte: "..."} }`. Status 403 sem permissão ou registro fechado, 404 para item de outro registro, 422 com erros por campo. O id do registro vem do POST mas é conferido no banco; totais, descontos e estoque são sempre calculados no servidor.
 
-**API:** `{ "status": true|false, "message": "...", "result": ... }` enviado por `$this->response($corpo, REST_Controller::HTTP_OK)`; método do controller nomeado `<recurso>_<verbo>` (`index_get`, `index_post`).
+**API:** `{ "status": true|false, "message": "...", "result": ... }` enviado por `$this->response($corpo, REST_Controller::HTTP_OK)`; método do controller nomeado `<recurso>_<verbo>` (`index_get`, `index_post`). Token ausente, inválido ou de conta ou grupo desativado responde 401; falta de permissão responde 403 por `exigirPermissao()`; dado inválido responde 422 com `erros`; exceção não tratada responde 500 `{status:false,message:'Erro interno'}` e vai para o log.
+
+**Login:** `login/verificarLogin` e `mine/login` respondem JSON por status HTTP (200, 401, 403, 422, 429 com `Retry-After`) e devolvem o token CSRF novo no campo de nome configurado.
+
+**Webhooks de pagamento:** `Webhooks` responde JSON com `Cache-Control: no-store`: 200 com `status` (`aplicado`, `repetido`, `ignorado`, `divergente`, `sem_efeito`), 401 sem segredo, token ou assinatura válidos, 405, 413, 429 e 503 `tente_novamente` (o evento é reprocessado).
 
 ## Padrões de Erro
 
 **Propagação:** model devolve dados, `false` ou lança `RuntimeException` quando uma operação obrigatória falha (as migrations lançam quando a tabela não foi criada). O controller decide o status e a mensagem para o usuário.
 
-**Logging:** erro técnico por `log_message('error', ...)` (threshold 1, em `application/logs`); trilha das ações do usuário por `log_info('<tarefa>')` (`audit_helper`), gravada na tabela `logs`. Nunca logar senha, token, chave ou dado de cartão.
+**Logging:** erro técnico por `log_message('error', ...)` (threshold 1, em `application/logs`); trilha das ações do usuário por `log_info('<tarefa>')` (`audit_helper`), gravada na tabela `logs`. Nunca logar senha, token, chave, dado de cartão, payload de webhook, dados do pagador nem o caminho `webhooks/efi/<segredo>`.
+
+**Gateways e transações:** `BasePaymentGateway::chamarGateway()` converte recusa em `GatewayRecusouException` (422) e falha técnica em `GatewayIndisponivelException` (502), e registra `gateway op= gateway= cobranca= http= duracao_ms=` sem texto do provedor. Operação com várias tabelas usa transação; em falha faz rollback, loga `transacao rollback operacao=<nome> id=<id>` e devolve `false`.
 
 **Páginas de erro:** em produção o hook `pagina_de_erro` responde 500 com `errors/html/error_500.php`, sem detalhe técnico; o Whoops só com `WHOOPS_ERROR_PAGE_ENABLED` em development.
 
@@ -171,7 +183,11 @@ Regras que valem para toda mudança:
 
 **2FA:** TOTP opcional (`Totp`), com códigos de recuperação guardados só como hash; um grupo pode exigir o cadastro.
 
-**API:** JWT HS256 de curta duração em `Authorization: Bearer`, com refresh token rotativo (`Refresh_token`, tabela `api_refresh_tokens`). O token não carrega permissões: usuário e permissão são consultados no banco a cada requisição. Detalhes em `docs/api-autenticacao.md`.
+**API:** JWT HS256 de curta duração em `Authorization: Bearer`, com refresh token rotativo por tipo (`Refresh_token`, tabela `api_refresh_tokens`, `tipo` `usuario` ou `cliente`). O token não carrega permissões: usuário e permissão são consultados no banco a cada requisição. A API do cliente emite access token de 1 hora, `refresh`, `logout` e `PUT /client/password`; com troca de senha pendente responde 403 `troca_de_senha_obrigatoria`. Detalhes em `docs/api-autenticacao.md`.
+
+**Área do cliente:** `Mine::clienteLogado()` revalida o cliente no banco a cada requisição (`sessao_versao`, `senha_trocar`) e falha fechado. Cliente criado pelo operador ou pela API recebe senha aleatória por `clienteSenhaAleatoria()`, mostrada uma única vez, e troca a senha em `mine/definirSenha` antes de seguir. O limite diário de abertura de OS é `CLIENTE_OS_LIMITE_DIARIO`.
+
+**Webhooks:** autenticados por segredo na rota (Efí), assinatura (Mercado Pago) ou token (Asaas); o corpo nunca é confiável: o pagamento é reconsultado no gateway (`consultarPagamento()`), o valor é conferido e o evento é idempotente pela tabela `webhook_eventos`.
 
 ## Observabilidade
 
@@ -192,7 +208,7 @@ Regras que valem para toda mudança:
 
 ## Pagination
 
-**Estilo:** offset na URL, como o `CI_Pagination`, por `MY_Controller::paginacao($baseUrl, $total, $offset, null, $filtros)` e `component('pagination', ...)`. Nenhuma tela do painel usa `CI_Pagination::create_links()`.
+**Estilo:** offset na URL, como o `CI_Pagination`, por `MY_Controller::paginacao($baseUrl, $total, $offset, null, $filtros)` e `component('pagination', ...)`. Nenhuma tela do painel usa `CI_Pagination::create_links()`. Na API, `REST_Controller::paginacaoDaApi()` lê `perPage` (1 a 100, padrão 20) e `page` (>= 0) e responde 422 quando inválidos.
 
 **Limites:** `per_page` 10 em `MY_Controller::$data['configuration']`.
 
@@ -208,7 +224,7 @@ Regras que valem para toda mudança:
 
 ## Configuration / Env vars
 
-**Naming:** `UPPER_SNAKE_CASE` com prefixo por assunto (`APP_`, `DB_`, `EMAIL_`, `API_`, `PAYMENT_GATEWAYS_<GATEWAY>_`).
+**Naming:** `UPPER_SNAKE_CASE` com prefixo por assunto (`APP_`, `DB_`, `EMAIL_`, `API_`, `PAYMENT_GATEWAYS_<GATEWAY>_`, `WEBHOOK_`); segredos de webhook em `EFI_WEBHOOK_SECRET`, `MP_WEBHOOK_SECRET` e `ASAAS_WEBHOOK_TOKEN`.
 
 **Onde declarar:** `application/.env.example` lista toda variável; `index.php` carrega o `.env` com phpdotenv e os arquivos `application/config/*.php` leem por `$_ENV['NOME'] ?? padrão`.
 
@@ -232,11 +248,11 @@ Regras que valem para toda mudança:
 
 **Disparo:** cron do sistema operacional chama o CLI: `php index.php email/process` a cada 2 minutos e `php index.php email/retry` a cada 5; os controllers `Email` e `Tools` respondem só em linha de comando.
 
-**Fila:** e-mails entram na tabela `email_queue` (`MY_Email`) e saem pelo job; falhas são reenviadas pelo `retry`.
+**Fila:** e-mails entram na tabela `email_queue` (`MY_Email`) e saem pelo job, que toma o lock `GET_LOCK` e reserva o lote de forma atômica (até 5 tentativas; reserva expira em 15 minutos); falhas são reenviadas pelo `retry`, que também roda `Retencao::limpar()` (eventos de webhook com mais de 90 dias, refresh tokens vencidos há mais de 30 dias, e-mails enviados há mais de 7 dias e falhos há mais de 30).
 
 ## Rate limiting
 
-**Escopo:** API por IP, janela fixa de um minuto, tabela `api_rate_limit` (`API_RATE_LIMIT`, padrão 300, 0 desliga); login por `Limite_login`.
+**Escopo:** API por IP, janela fixa de um minuto, tabela `api_rate_limit` (`API_RATE_LIMIT`, padrão 300, 0 desliga); webhooks por IP no escopo `webhook` (`WEBHOOK_RATE_LIMIT`, padrão 120); login por `Limite_login`; abertura de OS pelo cliente por dia (`CLIENTE_OS_LIMITE_DIARIO`, padrão 10).
 
 **Resposta:** 429 com `Retry-After` no login e na API.
 
@@ -250,13 +266,13 @@ Regras que valem para toda mudança:
 
 **Estratégia:** proteção do CodeIgniter ligada (`APP_CSRF_PROTECTION`); `MY_Security` deixa o cookie do CSRF sem HttpOnly e com SameSite Strict para o JS ler o token.
 
-**Escopo:** todo POST do painel; excluídos `api.*` (usa Bearer) e `csp/report`. O token regenera a cada requisição; `lib/http.js` o acrescenta e atualiza os campos ocultos.
+**Escopo:** todo POST do painel; excluídos `api.*` (usa Bearer), `csp/report` e `webhooks/*` (autenticados por segredo, token ou assinatura). O token regenera a cada requisição; `lib/http.js` o acrescenta e atualiza os campos ocultos.
 
 ## Session / Cookie
 
 **Tipo:** sessão no banco; cookie `HttpOnly`, `SameSite=Lax` e `Secure` em modo `auto` (só com HTTPS; atrás de proxy, o `X-Forwarded-Proto` só vale vindo de IP de `APP_PROXY_IPS`).
 
-**Logout:** `login/sair` encerra a sessão; trocar a senha aumenta a versão da sessão e derruba as outras. Detalhes em `docs/cookies-e-sessao.md`.
+**Logout:** `login/sair` e `mine/sair` só por POST com CSRF (GET responde 405); trocar a senha aumenta a versão da sessão e derruba as outras. Detalhes em `docs/cookies-e-sessao.md`.
 
 ## API versioning
 
@@ -280,7 +296,7 @@ Regras que valem para toda mudança:
 
 ## API Client (frontend)
 
-**Wrapper:** `get()` e `post()` de `assets/js/lib/http.js`: mandam `X-Requested-With`, acrescentam o token do CSRF e tratam 403 (negação vira JSON, não redirect). Sem jQuery.
+**Wrapper:** `get()` e `post()` de `assets/js/lib/http.js`: mandam `X-Requested-With`, acrescentam o token do CSRF e tratam 403 (negação vira JSON, não redirect). Têm timeout (30 s), o 401 de sessão expirada avisa e leva ao login, e rede fora do ar ou JSON inválido viram `ErroHttp` com mensagem para o usuário. Sem jQuery.
 
 **Erro na UI:** `ErroHttp` com status e corpo; mensagens do servidor viram toast ou erro de campo.
 

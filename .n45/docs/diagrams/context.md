@@ -7,17 +7,20 @@ Visão externa: atores, integrações e dependências.
 ```mermaid
 %%{init: {'theme': 'neutral'} }%%
 flowchart TD
-  A([Dono da assistência]) --> S[Map-OS]
-  B([Atendente]) --> S
-  C([Técnico]) --> S
-  D([Cliente final]) --> S
-  I([Integrador\napp móvel ou sistema]) --> S
-  S --> E1["Efí\nBoleto e Pix"]
-  S --> E2["Mercado Pago\nCobranças"]
-  S --> E3["Asaas\nCobranças"]
-  S --> E4["Servidor SMTP\nE-mails"]
-  S --> E5["GitHub Releases\nAtualização do sistema"]
-  S --> E6["WhatsApp\nLink de mensagem pronta"]
+  Dono([Administrador / Dono]) --> S[Map-OS]
+  Atend([Atendente]) --> S
+  Tec([Técnico]) --> S
+  Cli([Cliente final]) --> S
+  Int([Integrador / app móvel]) --> S
+  S --> Efi["Efí\nBoleto e Pix"]
+  S --> MP["Mercado Pago\nCobranças"]
+  S --> Asaas["Asaas\nCobranças"]
+  S --> SMTP["Servidor SMTP\nE-mails"]
+  S --> GH["GitHub Releases\nAtualização"]
+  S --> Whats["WhatsApp\nLink de mensagem"]
+  Efi -.->|webhook| S
+  MP -.->|webhook| S
+  Asaas -.->|webhook| S
 ```
 
 ---

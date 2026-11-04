@@ -10,7 +10,7 @@ Transições válidas por entidade — base pro architect respeitar estados ao c
 %%{init: {'theme': 'neutral'} }%%
 stateDiagram-v2
   [*] --> Orcamento: criada pela tela ou API
-  [*] --> Aberto: criada pela tela, API ou cliente
+  [*] --> Aberto: tela, API ou área do cliente
   Orcamento --> Negociacao
   Negociacao --> Aberto
   Aberto --> Aprovado
@@ -19,12 +19,12 @@ stateDiagram-v2
   AguardandoPecas --> EmAndamento: peça chegou
   EmAndamento --> Finalizado
   Finalizado --> Faturado: fatura e gera lançamento
-  Orcamento --> Cancelado: cancela
-  Negociacao --> Cancelado: cancela
-  Aberto --> Cancelado: cancela
-  Aprovado --> Cancelado: cancela
-  EmAndamento --> Cancelado: cancela
-  AguardandoPecas --> Cancelado: cancela
+  Orcamento --> Cancelado
+  Negociacao --> Cancelado
+  Aberto --> Cancelado
+  Aprovado --> Cancelado
+  EmAndamento --> Cancelado
+  AguardandoPecas --> Cancelado
   Faturado --> [*]
   Cancelado --> [*]
 ```
@@ -44,13 +44,13 @@ stateDiagram-v2
 ```mermaid
 %%{init: {'theme': 'neutral'} }%%
 stateDiagram-v2
-  [*] --> criada: criada no gateway
-  criada --> paga: confirma pagamento
-  criada --> cancelada: cancela
-  criada --> excluida: exclui
-  paga --> [*]
-  cancelada --> [*]
-  excluida --> [*]
+  [*] --> Criada: criada no gateway
+  Criada --> Paga: pagamento confirmado ou webhook
+  Criada --> Cancelada: cancelamento
+  Criada --> Excluida: exclusão
+  Paga --> [*]
+  Cancelada --> [*]
+  Excluida --> [*]
 ```
 
 ---

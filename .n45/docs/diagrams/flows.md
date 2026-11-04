@@ -9,24 +9,24 @@ Sequência de interações para os principais fluxos da aplicação.
 ```mermaid
 %%{init: {'theme': 'neutral'} }%%
 sequenceDiagram
-  actor At as Atendente
-  actor Tec as Técnico
-  actor Dono as Dono
+  actor A as Atendente
+  actor T as Técnico
+  actor D as Dono
   participant P as Painel
   participant DB as Banco
-  At->>P: Nova OS com cliente, descrição e status inicial
-  alt usuário sem eOs
-    P-->>At: 403
+  A->>P: Nova OS com cliente, descrição e status
+  alt sem permissão eOs
+    P-->>A: 403
   else com permissão
-    P->>DB: grava OS e histórico
-    P-->>At: redireciona com toast de sucesso
+    P->>DB: grava OS e os_historico
+    P-->>A: redireciona com toast de sucesso
   end
-  Tec->>P: adiciona produtos, serviços e anexos
-  P->>DB: calcula estoque e totais no servidor
-  Tec->>P: muda status até Finalizado
-  P-->>Tec: OS pronta para imprimir ou enviar por e-mail
-  Dono->>P: fatura a OS
-  P->>DB: cria lançamento e muda a OS para Faturado
+  T->>P: adiciona produtos, serviços e anexos
+  P->>DB: recalcula totais e estoque no servidor
+  T->>P: muda status até Finalizado
+  D->>P: fatura a OS
+  P->>DB: transação cria lançamento e status Faturado
+  P-->>D: OS faturada
 ```
 
 ### Login no painel
@@ -41,17 +41,16 @@ sequenceDiagram
   U->>L: e-mail e senha
   L->>LL: consulta bloqueio
   alt bloqueado
-    LL-->>L: bloqueado
-    L-->>U: mensagem e espera
+    L-->>U: mensagem de espera
   else liberado
-    L->>DB: confere credenciais
-    alt e-mail desconhecido ou senha errada
-      L->>LL: conta falha
+    L->>DB: confere senha
+    alt senha incorreta ou e-mail desconhecido
+      L->>LL: registra falha
       L-->>U: mensagem genérica
-    else senha confere
+    else senha correta
       opt grupo ou conta exige 2FA
         L-->>U: pede código TOTP
-        U->>L: código TOTP
+        U->>L: código
       end
       L-->>U: sessão criada
     end
@@ -67,13 +66,33 @@ sequenceDiagram
   actor C as Cliente
   participant P as Painel
   participant G as Gateway
+  participant W as Webhooks
   participant DB as Banco
-  U->>P: gera cobrança de OS ou venda (aCobranca)
-  P->>G: cria cobrança no gateway configurado
-  G-->>P: boleto ou Pix
+  U->>P: gera cobrança de OS ou venda
+  P->>G: cria cobrança
   P->>DB: grava cobrancas
   P-->>C: link ou Pix por e-mail
-  U->>P: confirma pagamento ou cancela
+  C->>G: paga
+  G->>W: webhook de pagamento
+  W->>G: reconsulta o pagamento
+  W->>DB: confere valor e baixa uma única vez
+```
+
+### Primeiro acesso do cliente
+
+```mermaid
+%%{init: {'theme': 'neutral'} }%%
+sequenceDiagram
+  actor O as Operador
+  actor C as Cliente
+  participant S as Map-OS
+  O->>S: cadastra cliente sem senha
+  S-->>O: senha aleatória mostrada uma única vez
+  S-->>C: senha inicial por e-mail
+  C->>S: entra na área do cliente
+  S-->>C: obriga mine/definirSenha (API 403 troca_de_senha_obrigatoria)
+  C->>S: nova senha
+  S-->>C: outras sessões e tokens deixam de valer
 ```
 
 ---

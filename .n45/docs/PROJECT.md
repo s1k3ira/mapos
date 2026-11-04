@@ -4,7 +4,7 @@ description: Sistema open source de ordens de serviço e gestão para assistênc
 lang: pt-BR
 n45_version: 1.1.0
 type: Aplicação web self-hosted (ERP leve de ordens de serviço)
-updated_at: "2026-11-03 14:50:54"
+updated_at: "2026-11-04 07:24:55"
 ---
 ## Visão Geral
 
@@ -80,7 +80,7 @@ Status guardado em `os.status`; a lista exibida é configurável (`os_status_lis
 
 ### Cobrança
 
-`Cobrança criada no gateway → paga | cancelada | excluída`; a confirmação de pagamento e o cancelamento exigem `eCobranca`.
+`Cobrança criada no gateway → paga | cancelada | excluída`; a confirmação de pagamento e o cancelamento exigem `eCobranca`; o gateway também confirma o pagamento sozinho pelo webhook.
 
 ## Casos de Uso Principais
 
@@ -118,12 +118,24 @@ Status guardado em `os.status`; a lista exibida é configurável (`os_status_lis
 1. Usuário com `aCobranca` gera cobrança de uma OS ou venda
 2. Sistema chama o gateway configurado (Efí, Mercado Pago ou Asaas) e grava `cobrancas`
 3. Cliente recebe o link ou o Pix; o usuário confirma o pagamento ou cancela
+4. Quando o cliente paga, o gateway chama o webhook; o sistema reconsulta o pagamento, confere o valor e dá baixa na cobrança uma única vez
+
+### Primeiro acesso do cliente
+
+1. Operador cadastra o cliente (tela ou API) sem senha; o sistema gera uma senha aleatória e a mostra uma única vez, enviando também por e-mail
+2. Cliente entra na área do cliente com a senha inicial
+3. Sistema obriga `mine/definirSenha` (API: 403 `troca_de_senha_obrigatoria`) antes de qualquer outra tela
+4. Cliente define a nova senha; as outras sessões e tokens dele deixam de valer
 
 ## Regras de Negócio
 
 - Totais, descontos e baixa de estoque são sempre calculados no servidor; item enviado pelo cliente precisa pertencer ao registro e o id do registro é conferido no banco
 - CPF ou CNPJ e e-mail de cliente são únicos
-- Cliente novo sem senha informada ganha o CPF ou CNPJ sem pontuação como senha inicial (guardada com hash)
+- Cliente novo sem senha informada ganha senha inicial aleatória (guardada com hash), mostrada uma única vez ao operador ou devolvida pela API; o documento nunca é a senha, e o cliente troca a senha no primeiro acesso
+- Cliente com senha igual ao documento (legado) é marcado por `tools marcarSenhasLegadas` e só segue depois de definir nova senha
+- Cliente abre no máximo `CLIENTE_OS_LIMITE_DIARIO` OS por dia (padrão 10), na tela e na API
+- Baixa de cobrança por webhook nunca confia no corpo: o pagamento é reconsultado no gateway, o valor é conferido e cada evento é aplicado uma vez
+- Exclusão e faturamento de OS, venda, produto, serviço, cliente e cobrança são transacionais: ou tudo, ou nada
 - Toda rota do painel exige permissão declarada em `permissions_map.php`; método sem entrada é negado
 - Senha trocada, conta desativada ou expirada e grupo desativado encerram as sessões na requisição seguinte
 - Exceder as tentativas de login bloqueia o IP e o e-mail por um período e responde 429 na API
@@ -136,7 +148,9 @@ Status guardado em `os.status`; a lista exibida é configurável (`os_status_lis
 
 - **Upload:** 10 MB por arquivo (`UPLOAD_MAX_KB`), 40 megapixels por imagem (`UPLOAD_MAX_PIXELS`), além de `upload_max_filesize` e `post_max_size` do PHP
 - **Listagens do painel:** 10 itens por página
-- **API:** 300 requisições por minuto por IP (`API_RATE_LIMIT`); access token do usuário dura no máximo 1 hora; refresh token 30 dias (`API_REFRESH_TOKEN_EXPIRE_TIME`)
+- **API:** 300 requisições por minuto por IP (`API_RATE_LIMIT`); access token do usuário e do cliente dura no máximo 1 hora; refresh token 30 dias (`API_REFRESH_TOKEN_EXPIRE_TIME`); listagens com `perPage` de no máximo 100
+- **Webhooks:** 120 requisições por minuto por IP (`WEBHOOK_RATE_LIMIT`) e corpo de até 64 KB
+- **Área do cliente:** 10 aberturas de OS por dia (`CLIENTE_OS_LIMITE_DIARIO`)
 - **Sessão:** 7200 segundos (`APP_SESS_EXPIRATION`)
 - **Chave JWT:** mínimo de 32 caracteres
 
