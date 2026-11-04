@@ -36,7 +36,7 @@ class Mine extends CI_Controller
     {
         $this->load->view('conecte/login', [
             'erro' => $this->session->flashdata('error'),
-            'sucesso' => $this->session->flashdata('success'),
+            'sucesso' => $this->session->flashdata('success') ?: ($this->input->get('saiu') === '1' ? 'Você saiu.' : null),
             // O atalho da listagem de clientes abre mine?e=<e-mail> com o campo preenchido.
             'email' => trim((string) $this->input->get('e')),
         ]);
@@ -44,8 +44,16 @@ class Mine extends CI_Controller
 
     public function sair()
     {
+        // Logout só por POST com CSRF (RF-27): GET não derruba a sessão.
+        if ($this->input->method() !== 'post') {
+            $this->output->set_status_header(405)->set_header('Allow: POST');
+
+            return;
+        }
+
         $this->session->sess_destroy();
-        redirect('mine');
+
+        return $this->irPara('mine?saiu=1');
     }
 
     // --- Recuperação de senha ---------------------------------------------
@@ -237,19 +245,19 @@ class Mine extends CI_Controller
         $this->form_validation->set_rules('email', 'E-mail', 'valid_email|required|trim');
         $this->form_validation->set_rules('senha', 'Senha', 'required|trim');
         if ($this->form_validation->run() == false) {
-            echo json_encode(['result' => false, 'message' => validation_errors()]);
+            $this->responderLogin(422, ['result' => false, 'message' => 'Confira os campos destacados.', 'erros' => $this->form_validation->error_array()]);
 
             return;
         }
 
-        $email = $this->input->post('email');
-        $password = $this->input->post('senha');
+        $email = (string) $this->input->post('email');
+        $password = (string) $this->input->post('senha');
         $ip = $this->input->ip_address();
 
         // Limite de tentativas (#2870): bloqueado, nem consulta a senha.
         $this->load->library('Limite_login');
         if ($this->limite_login->bloqueado('cliente', $email, $ip)) {
-            echo json_encode(['result' => false, 'message' => Limite_login::MENSAGEM, 'MAPOS_TOKEN' => $this->security->get_csrf_hash()]);
+            $this->responderLogin(429, ['result' => false, 'message' => Limite_login::MENSAGEM], max(1, $this->limite_login->segundosRestantes('cliente', $email, $ip)));
 
             return;
         }
@@ -258,10 +266,10 @@ class Mine extends CI_Controller
 
         // Mesma mensagem para e-mail inexistente e senha errada: mensagens
         // distintas revelam quais e-mails possuem cadastro.
-        $senhaConfere = senhaConfere((string) $password, $cliente->senha ?? null);
+        $senhaConfere = senhaConfere($password, $cliente->senha ?? null);
         if (! $cliente || ! $senhaConfere) {
             $this->limite_login->registrarFalha('cliente', $email, $ip);
-            echo json_encode(['result' => false, 'message' => 'Os dados de acesso estão incorretos.', 'MAPOS_TOKEN' => $this->security->get_csrf_hash()]);
+            $this->responderLogin(401, ['result' => false, 'message' => 'Os dados de acesso estão incorretos.']);
 
             return;
         }
@@ -290,7 +298,7 @@ class Mine extends CI_Controller
             'ip' => $ip,
         ]);
 
-        echo json_encode(['result' => true]);
+        $this->responderLogin(200, ['result' => true]);
     }
 
     // --- Telas do cliente logado ----------------------------------------------
@@ -841,6 +849,24 @@ class Mine extends CI_Controller
         }
 
         $this->irPara('mine');
+    }
+
+    /**
+     * Resposta do login em JSON com status HTTP (RF-29). Fora do 200 leva o
+     * token CSRF novo no campo de nome configurável (APP_CSRF_TOKEN_NAME).
+     */
+    private function responderLogin(int $status, array $corpo, ?int $retryAfter = null): void
+    {
+        if ($retryAfter !== null) {
+            $corpo['retry_after'] = $retryAfter;
+            $this->output->set_header('Retry-After: ' . $retryAfter);
+        }
+
+        if ($status !== 200) {
+            $corpo[$this->security->get_csrf_token_name()] = $this->security->get_csrf_hash();
+        }
+
+        $this->responderJson($status, $corpo);
     }
 
     private function responderJson(int $status, array $corpo): void

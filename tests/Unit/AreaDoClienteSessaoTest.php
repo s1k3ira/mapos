@@ -79,14 +79,16 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
     /**
      * @param  array<string, mixed>  $sessao
      * @param  array<string, mixed>  $post
+     * @param  array<string, mixed>  $query
      */
-    private function mine(array $sessao = [], string $metodo = 'GET', array $post = [], bool $ajax = false): MineTestavel
+    private function mine(array $sessao = [], string $metodo = 'GET', array $post = [], bool $ajax = false, array $query = []): MineTestavel
     {
         $mine = $this->makeInstance(MineTestavel::class);
         $mine->db = $this->db;
         $mine->session = new SessaoDeTeste($sessao);
-        $mine->input = new EntradaDeTeste($metodo, $post, $ajax);
+        $mine->input = new EntradaDeTeste($metodo, $post, $ajax, $query);
         $mine->output = new SaidaDeTeste();
+        $mine->security = new SegurancaDeTeste();
         $mine->load = new CarregadorDeTeste($mine);
         $mine->config = new ConfigDeTeste();
         $mine->form_validation = new ValidacaoDeTeste();
@@ -149,6 +151,110 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
     private function sessaoDoCliente(int $id = 5, int $versao = 5): array
     {
         return ['conectado' => true, 'cliente_id' => $id, 'cliente_sessao_versao' => $versao, 'nome' => 'Ana', 'email' => 'ana@x.com', 'isCliente' => true];
+    }
+
+    // --- Login por status HTTP e logout só por POST ---------------------------
+
+    private function corpoDe(MineTestavel $mine): array
+    {
+        $this->assertSame('application/json', $mine->output->tipo);
+
+        return json_decode($mine->output->corpo, true);
+    }
+
+    public function testLoginDoClienteComEmailInvalidoResponde422(): void
+    {
+        $mine = $this->mine([], 'POST', ['email' => 'nao-e-email', 'senha' => 'x']);
+        $mine->form_validation->erros = ['email' => 'O campo E-mail deve conter um endereço de e-mail válido.'];
+
+        $this->chamar($mine, 'login');
+
+        $this->assertSame(422, $mine->output->status);
+        $this->assertSame(
+            ['result' => false, 'message' => 'Confira os campos destacados.', 'erros' => ['email' => 'O campo E-mail deve conter um endereço de e-mail válido.'], 'OUTRO' => 'hash-novo'],
+            $this->corpoDe($mine)
+        );
+        $this->assertSame(0, $this->falhasContadas());
+    }
+
+    public function testLoginDoClienteComSenhaErradaResponde401(): void
+    {
+        $this->cliente();
+
+        $mine = $this->loginDe('ana@x.com', 'errada');
+
+        $this->assertSame(401, $mine->output->status);
+        $this->assertSame(['result' => false, 'message' => 'Os dados de acesso estão incorretos.', 'OUTRO' => 'hash-novo'], $this->corpoDe($mine));
+        $this->assertArrayNotHasKey('redirect', $this->corpoDe($mine));
+        $this->assertSame(2, $this->falhasContadas());
+    }
+
+    public function testLoginDoClienteBloqueadoResponde429ComRetryAfter(): void
+    {
+        $this->cliente();
+        for ($i = 0; $i < Limite_login::LIMITE_EMAIL; $i++) {
+            $this->loginDe('ana@x.com', 'errada');
+        }
+
+        $mine = $this->loginDe('ana@x.com', 'SenhaAtual2026');
+
+        $this->assertSame(429, $mine->output->status);
+        $this->assertContains('Retry-After: 60', $mine->output->cabecalhos);
+        $this->assertSame(['result' => false, 'message' => Limite_login::MENSAGEM, 'retry_after' => 60, 'OUTRO' => 'hash-novo'], $this->corpoDe($mine));
+        $this->assertArrayNotHasKey('conectado', $mine->session->dados);
+    }
+
+    public function testLoginDoClienteComSucessoResponde200EmJson(): void
+    {
+        $this->cliente(5, 4);
+
+        $mine = $this->loginDe('ana@x.com', 'SenhaAtual2026');
+
+        $this->assertSame(200, $mine->output->status);
+        $this->assertSame(['result' => true], $this->corpoDe($mine));
+        $this->assertTrue($mine->session->dados['conectado']);
+        $this->assertSame(5, $mine->session->dados['cliente_id']);
+        $this->assertSame(4, $mine->session->dados['cliente_sessao_versao']);
+    }
+
+    public function testGetEmLogoutDoClienteResponde405SemEncerrarASessao(): void
+    {
+        $mine = $this->mine($this->sessaoDoCliente(), 'GET');
+
+        $this->chamar($mine, 'sair');
+
+        $this->assertSame(405, $mine->output->status);
+        $this->assertContains('Allow: POST', $mine->output->cabecalhos);
+        $this->assertFalse($mine->session->destruida);
+        $this->assertTrue($mine->session->dados['conectado']);
+        $this->assertNull($mine->destino);
+    }
+
+    public function testPostEmLogoutDoClienteEncerraASessao(): void
+    {
+        $mine = $this->mine($this->sessaoDoCliente(), 'POST');
+
+        $this->chamar($mine, 'sair');
+
+        $this->assertTrue($mine->session->destruida);
+        $this->assertSame('mine?saiu=1', $mine->destino);
+        $this->assertSame([], $mine->session->dados);
+    }
+
+    public function testIndexDoClienteMostraVoceSaiu(): void
+    {
+        $com = $this->mine([], 'GET', [], false, ['saiu' => '1']);
+        $this->chamar($com, 'index');
+        $this->assertSame('Você saiu.', $com->load->dados['sucesso']);
+
+        $sem = $this->mine();
+        $this->chamar($sem, 'index');
+        $this->assertNull($sem->load->dados['sucesso']);
+
+        $flash = $this->mine([], 'GET', [], false, ['saiu' => '1']);
+        $flash->session->set_flashdata('success', 'Senha redefinida.');
+        $this->chamar($flash, 'index');
+        $this->assertSame('Senha redefinida.', $flash->load->dados['sucesso']);
     }
 
     // --- Versão da sessão -----------------------------------------------------
@@ -514,6 +620,8 @@ final class SessaoDeTeste
 
     public bool $regenerada = false;
 
+    public bool $destruida = false;
+
     /** @param array<string, mixed> $dados */
     public function __construct(public array $dados = [])
     {
@@ -552,12 +660,22 @@ final class SessaoDeTeste
     {
         $this->regenerada = true;
     }
+
+    public function sess_destroy(): void
+    {
+        $this->destruida = true;
+        $this->dados = [];
+    }
 }
 
 final class EntradaDeTeste
 {
     /** @param array<string, mixed> $post */
-    public function __construct(private string $metodo, private array $post, private bool $ajax)
+    /**
+     * @param  array<string, mixed>  $post
+     * @param  array<string, mixed>  $query
+     */
+    public function __construct(private string $metodo, private array $post, private bool $ajax, private array $query = [])
     {
     }
 
@@ -573,7 +691,7 @@ final class EntradaDeTeste
 
     public function get($chave = null)
     {
-        return null;
+        return $this->query[$chave] ?? null;
     }
 
     public function ip_address()
@@ -595,8 +713,12 @@ final class SaidaDeTeste
 
     public string $corpo = '';
 
+    /** @var list<string> */
+    public array $cabecalhos = [];
+
     public function limpar(): void
     {
+        $this->cabecalhos = [];
         $this->status = null;
         $this->tipo = null;
         $this->corpo = '';
@@ -612,6 +734,13 @@ final class SaidaDeTeste
     public function set_content_type($tipo, $charset = null)
     {
         $this->tipo = $tipo;
+
+        return $this;
+    }
+
+    public function set_header($cabecalho)
+    {
+        $this->cabecalhos[] = $cabecalho;
 
         return $this;
     }
@@ -667,12 +796,35 @@ final class ValidacaoDeTeste
 {
     public function __call($metodo, $argumentos)
     {
-        return $metodo === 'run' ? true : $this;
+        return $this;
+    }
+
+    /** @var array<string, string> */
+    public array $erros = [];
+
+    public function run()
+    {
+        return $this->erros === [];
     }
 
     public function error_array(): array
     {
-        return [];
+        return $this->erros;
+    }
+}
+
+final class SegurancaDeTeste
+{
+    public string $nome = 'OUTRO';
+
+    public function get_csrf_token_name(): string
+    {
+        return $this->nome;
+    }
+
+    public function get_csrf_hash(): string
+    {
+        return 'hash-novo';
     }
 }
 
@@ -711,6 +863,8 @@ final class MineTestavel extends Mine
     public $clientes_model;
 
     public $limite_login;
+
+    public $security;
 
     public ?string $destino = null;
 
