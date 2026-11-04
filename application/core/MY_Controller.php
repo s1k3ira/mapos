@@ -22,14 +22,43 @@ class MY_Controller extends CI_Controller
     {
         parent::__construct();
 
-        if ((! session_id()) || (! $this->session->userdata('logado'))) {
-            redirect('login');
-        }
+        $this->exigirSessao();
         $this->validarSessaoDoUsuario();
         $this->exigirBancoAtualizado();
         $this->exigirDoisFatores();
         $this->load_configuration();
         $this->verificarPermissaoDaRota();
+    }
+
+    /**
+     * Sem sessão aberta: AJAX recebe 401 JSON (o fetch seguiria um redirect 302
+     * para o HTML do login e trataria como sucesso); o resto volta para o login.
+     */
+    protected function exigirSessao(): void
+    {
+        if (session_id() && $this->session->userdata('logado')) {
+            return;
+        }
+
+        $this->sessaoExpirada('Sua sessão expirou. Entre novamente.');
+    }
+
+    /** Grava o motivo e leva ao login, ou responde 401 JSON a quem chamou por AJAX. */
+    protected function sessaoExpirada(string $motivo): void
+    {
+        if (! $this->input->is_ajax_request()) {
+            $this->irPara('login');
+
+            return;
+        }
+
+        $this->session->set_flashdata('error', $motivo);
+        $this->output
+            ->set_status_header(401)
+            ->set_content_type('application/json', 'utf-8')
+            ->set_output(json_encode(['result' => false, 'message' => 'Sessão expirada', 'redirect' => site_url('login')]));
+        $this->output->_display();
+        $this->encerrar();
     }
 
     /**
@@ -49,7 +78,7 @@ class MY_Controller extends CI_Controller
             $this->session->unset_userdata(['logado', 'id_admin', 'nome_admin', 'email_admin', 'url_image_user_admin', 'tema_modo_admin', 'tema_cor_admin', 'permissao', 'exigir_2fa_cadastro', 'totp_pendente', 'sessao_versao']);
             $this->session->sess_regenerate(true);
             $this->session->set_flashdata('error', $motivo);
-            redirect('login');
+            $this->sessaoExpirada($motivo);
         }
 
         if ((int) $this->session->userdata('permissao') !== $estado['permissoes_id']) {
@@ -282,6 +311,11 @@ class MY_Controller extends CI_Controller
     protected function redirecionarParaOPainel()
     {
         redirect(base_url());
+    }
+
+    protected function irPara(string $rota)
+    {
+        redirect($rota);
     }
 
     protected function encerrar()

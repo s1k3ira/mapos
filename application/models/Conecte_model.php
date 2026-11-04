@@ -158,6 +158,35 @@ class Conecte_model extends CI_Model
         return $this->db->get('clientes')->row();
     }
 
+    /**
+     * Versão da sessão e troca de senha pendente do cliente, lidas do banco a
+     * cada requisição da área do cliente. Null: cliente inexistente ou consulta
+     * que falhou (quem chama encerra a sessão).
+     *
+     * @return array{sessao_versao: int, senha_trocar: int}|null
+     */
+    public function estadoDaSessao(int $idCliente): ?array
+    {
+        $consulta = $this->db->select('sessao_versao, senha_trocar')->where('idClientes', $idCliente)->limit(1)->get('clientes');
+        if ($consulta === false) {
+            log_message('error', sprintf('cliente sessao falha id=%d', $idCliente));
+
+            return null;
+        }
+
+        $linha = $consulta->row();
+
+        return $linha ? ['sessao_versao' => (int) $linha->sessao_versao, 'senha_trocar' => (int) $linha->senha_trocar] : null;
+    }
+
+    /** Marca o token de recuperação como usado; false = outra requisição já o consumiu. */
+    public function consumirTokenDeReset(int $idToken): bool
+    {
+        $this->db->where('id', $idToken)->where('token_utilizado', 0)->update('resets_de_senha', ['token_utilizado' => 1]);
+
+        return $this->db->affected_rows() === 1;
+    }
+
     public function edit($table, $data, $fieldID, $ID)
     {
         $this->db->where($fieldID, $ID);
