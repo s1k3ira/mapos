@@ -216,6 +216,62 @@ class Clientes_model extends CI_Model
     }
 
     /**
+     * Marca senha_trocar = 1 nos clientes cuja senha ainda é o próprio
+     * CPF/CNPJ sem pontuação (senha padrão do cadastro antigo). Devolve a
+     * quantidade marcada ou false se o banco falhar. Custa um bcrypt por
+     * cliente com documento e senha: demora em bases grandes.
+     */
+    public function marcarSenhasLegadas(int $lote = 500): int|false
+    {
+        $ultimoId = 0;
+        $total = 0;
+
+        while (true) {
+            $consulta = $this->db->select('idClientes, documento, senha')
+                ->where('idClientes >', $ultimoId)
+                ->where('senha_trocar', 0)
+                ->order_by('idClientes')
+                ->limit($lote)
+                ->get('clientes');
+
+            if ($consulta === false) {
+                log_message('error', 'cliente marcar_senhas_legadas falha');
+
+                return false;
+            }
+
+            $linhas = $consulta->result();
+            if ($linhas === []) {
+                return $total;
+            }
+
+            $ids = [];
+            foreach ($linhas as $linha) {
+                $ultimoId = (int) $linha->idClientes;
+                $documento = (string) preg_replace('/[^A-Za-z0-9]/', '', (string) $linha->documento);
+                if ($documento === '' || (string) $linha->senha === '') {
+                    continue;
+                }
+                if (password_verify($documento, (string) $linha->senha)) {
+                    $ids[] = $ultimoId;
+                }
+            }
+
+            if ($ids === []) {
+                continue;
+            }
+
+            $atualizou = $this->db->where_in('idClientes', $ids)->where('senha_trocar', 0)->update('clientes', ['senha_trocar' => 1]);
+            if ($atualizou === false) {
+                log_message('error', 'cliente marcar_senhas_legadas falha');
+
+                return false;
+            }
+            $total += (int) $this->db->affected_rows();
+        }
+    }
+
+    /**
      * Exclui o cliente e o que é dele (OS, itens, vendas) numa transação e
      * revoga os refresh tokens dele. false = nada mudou (inclusive cliente
      * inexistente). Anexos, equipamentos, cobranças e lançamentos não são

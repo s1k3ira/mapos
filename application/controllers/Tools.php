@@ -52,8 +52,28 @@ class Tools extends CI_Controller
         $result .= "php index.php tools migrate [\"version_number\"]    Run all migrations. The version number is optional.\n";
         $result .= "php index.php tools seeder \"file_name\"            Creates a new seed file.\n";
         $result .= "php index.php tools seed \"file_name\"              Run the specified seed file.\n";
+        $result .= "php index.php tools marcarSenhasLegadas          Força a troca de senha dos clientes cuja senha é o CPF/CNPJ.\n";
 
         echo $result . PHP_EOL;
+    }
+
+    /**
+     * Marca a troca obrigatória de senha nos clientes cuja senha ainda é o
+     * próprio CPF/CNPJ sem pontuação (senha padrão até a v5). Imprime só a
+     * quantidade: nunca o documento.
+     */
+    public function marcarSenhasLegadas()
+    {
+        $this->load->model('clientes_model');
+        $marcados = $this->clientes_model->marcarSenhasLegadas();
+
+        if ($marcados === false) {
+            echo 'Não foi possível marcar as senhas. Veja o log.' . PHP_EOL;
+
+            return;
+        }
+
+        echo $marcados . ' cliente(s) marcado(s)' . PHP_EOL;
     }
 
     public function migration($name)
