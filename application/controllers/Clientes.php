@@ -100,7 +100,18 @@ class Clientes extends MY_Controller
         $erros = [];
 
         if ($this->input->method() === 'post') {
-            [$erros, $id] = $this->salvarCliente($cliente);
+            [$erros, $id, $senhaGerada] = $this->salvarCliente($cliente);
+            if ($erros === [] && $cliente === null && $senhaGerada !== null) {
+                // A senha sai na resposta do POST: sem redirect nem flashdata (que iria para o banco).
+                $gravado = $this->clientes_model->getById($id);
+                $this->output->set_header('Cache-Control: no-store');
+                $this->data['cliente'] = $gravado;
+                $this->data['senhaInicial'] = $senhaGerada;
+                $this->data['emailEnviado'] = $this->enviarSenhaInicial($gravado, $senhaGerada);
+                $this->data['view'] = 'clientes/senha_inicial';
+
+                return $this->layout();
+            }
             if ($erros === []) {
                 $this->session->set_flashdata('success', $cliente === null ? 'Cliente cadastrado com sucesso!' : 'Alterações salvas.');
 
@@ -117,52 +128,82 @@ class Clientes extends MY_Controller
     }
 
     /**
+     * Envia ao cliente o e-mail com a senha inicial, direto pelo SMTP (fora da
+     * fila, para a senha não ir ao banco). false = não saiu.
+     */
+    protected function enviarSenhaInicial(object $cliente, string $senha): bool
+    {
+        $this->load->model('mapos_model');
+        $this->load->library('email');
+        $emitente = $this->mapos_model->getEmitente();
+        $html = $this->load->view('clientes/emails/senha_inicial', [
+            'cliente' => $cliente,
+            'emitente' => $emitente,
+            'senha' => $senha,
+            'urlAcesso' => site_url('mine'),
+        ], true);
+
+        return clienteEnviarSenhaInicial($this->email, $emitente, $cliente, $html);
+    }
+
+    /**
      * Valida o POST e grava o cliente (novo, ou o editado). É o que o
      * formulário e o cadastro rápido (modal da OS e da venda) têm em comum.
+     * Todo cliente criado pelo operador nasce com senha_trocar = 1.
      *
      * @param  bool  $aceitaSenha  false ignora a senha do POST (o cadastro rápido não tem o campo)
-     * @return array{0: array<string, string>, 1: int|null} erros por campo ('_geral' para falha ao gravar) e o id gravado
+     * @return array{0: array<string, string>, 1: int|null, 2: string|null} erros por campo ('_geral' para falha ao gravar), o id gravado e a senha gerada (só em cadastro novo sem senha digitada)
      */
     private function salvarCliente(?object $cliente, bool $aceitaSenha = true): array
     {
         $erros = $this->validarFormulario('clientes');
         if ($erros !== []) {
-            return [$erros, null];
+            return [$erros, null, null];
         }
 
         $email = trim((string) $this->input->post('email'));
         if ($email !== '' && $this->clientes_model->emailExists($email, $cliente ? (int) $cliente->idClientes : null)) {
-            return [['email' => 'Este e-mail já está sendo usado por outro cliente.'], null];
+            return [['email' => 'Este e-mail já está sendo usado por outro cliente.'], null, null];
         }
 
         $post = $this->input->post();
         if (! $aceitaSenha && is_array($post)) {
             unset($post['senha']);
         }
-        $dados = clienteDadosDoFormulario($post, $cliente === null);
+        $senhaGerada = null;
 
         if ($cliente === null) {
-            $id = $this->clientes_model->add('clientes', $dados + ['dataCadastro' => date('Y-m-d')]);
+            $digitada = is_array($post) && is_string($post['senha'] ?? null) ? trim($post['senha']) : '';
+            $senhaGerada = $digitada === '' ? clienteSenhaAleatoria() : null;
+            $dados = clienteDadosDoFormulario($post, true, $senhaGerada) + ['senha_trocar' => 1, 'dataCadastro' => date('Y-m-d')];
+            $id = $this->clientes_model->add('clientes', $dados);
             $salvou = (bool) $id;
             $id = $salvou ? (int) $id : null;
         } else {
             $id = (int) $cliente->idClientes;
+            $dados = clienteDadosDoFormulario($post, false);
+            $hash = $dados['senha'] ?? null;
+            unset($dados['senha']);
             $salvou = $this->clientes_model->edit('clientes', $dados, 'idClientes', $id);
+            if ($salvou && $hash !== null && ! $this->clientes_model->registrarTrocaDeSenha($id, $hash, true)) {
+                return [['_geral' => 'Não foi possível salvar a senha. Tente de novo.'], null, null];
+            }
         }
 
         if (! $salvou) {
-            return [['_geral' => 'Não foi possível salvar. Tente de novo.'], null];
+            return [['_geral' => 'Não foi possível salvar. Tente de novo.'], null, null];
         }
 
         log_info($cliente === null ? 'Adicionou um cliente.' : 'Alterou um cliente. ID ' . $id);
 
-        return [[], $id];
+        return [[], $id, $senhaGerada];
     }
 
     /**
      * Cadastro rápido de cliente, no modal da tela da OS e da venda (#3003).
      * POST sem recarregar, com os mesmos campos e regras do formulário, mas
-     * sem a senha da área do cliente: ela é gerada a partir do documento.
+     * sem a senha da área do cliente: ela é aleatória, não é exibida nem enviada
+     * (o cliente usa "Esqueci a senha"), e o cliente troca no primeiro acesso.
      *
      * 201 {result, message, cliente: {id, valor, detalhe}} (o formato do
      * autocomplete), 422 {result: false, erros: {campo: mensagem}} ou 403.
@@ -267,27 +308,19 @@ class Clientes extends MY_Controller
             redirect(base_url());
         }
 
-        $id = $this->input->post('id');
-        if ($id == null) {
+        $id = (int) $this->input->post('id');
+        if ($id <= 0) {
             $this->session->set_flashdata('error', 'Erro ao tentar excluir cliente.');
             redirect(site_url('clientes/gerenciar/'));
         }
 
-        $os = $this->clientes_model->getAllOsByClient($id);
-        if ($os != null) {
-            $this->clientes_model->removeClientOs($os);
+        if ($this->clientes_model->excluirComDependentes($id)) {
+            log_info('Removeu um cliente. ID ' . $id);
+            $this->session->set_flashdata('success', 'Cliente excluído com sucesso!');
+        } else {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
         }
 
-        // excluindo Vendas vinculadas ao cliente
-        $vendas = $this->clientes_model->getAllVendasByClient($id);
-        if ($vendas != null) {
-            $this->clientes_model->removeClientVendas($vendas);
-        }
-
-        $this->clientes_model->delete('clientes', 'idClientes', $id);
-        log_info('Removeu um cliente. ID' . $id);
-
-        $this->session->set_flashdata('success', 'Cliente excluído com sucesso!');
         // Volta para a listagem com os mesmos filtros (só os permitidos).
         redirect(site_url('clientes') . listagemQuery(listagemFiltros(self::FILTROS, $this->input->get())));
     }

@@ -216,6 +216,56 @@ class Clientes_model extends CI_Model
     }
 
     /**
+     * Exclui o cliente e o que é dele (OS, itens, vendas) numa transação e
+     * revoga os refresh tokens dele. false = nada mudou (inclusive cliente
+     * inexistente). Anexos, equipamentos, cobranças e lançamentos não são
+     * apagados aqui: no MySQL as FKs fazem o DELETE falhar e tudo é desfeito.
+     */
+    public function excluirComDependentes(int $idCliente): bool
+    {
+        $this->db->trans_begin();
+
+        try {
+            $ids = array_column($this->db->select('idOs')->where('clientes_id', $idCliente)->get('os')->result_array(), 'idOs');
+            if ($ids !== []) {
+                foreach (['servicos_os', 'produtos_os', 'anotacoes_os', 'os_historico'] as $tabela) {
+                    if (in_array($tabela, ['anotacoes_os', 'os_historico'], true) && ! $this->db->table_exists($tabela)) {
+                        continue;
+                    }
+                    $this->db->where_in('os_id', $ids)->delete($tabela);
+                }
+                $this->db->where('clientes_id', $idCliente)->delete('os');
+            }
+
+            $vendas = array_column($this->db->select('idVendas')->where('clientes_id', $idCliente)->get('vendas')->result_array(), 'idVendas');
+            if ($vendas !== []) {
+                $this->db->where_in('vendas_id', $vendas)->delete('itens_de_vendas');
+                $this->db->where('clientes_id', $idCliente)->delete('vendas');
+            }
+
+            $this->db->where('idClientes', $idCliente)->delete('clientes');
+            $apagou = $this->db->affected_rows() === 1;
+
+            if ($apagou) {
+                $this->refreshTokens()->revogarDoUsuario($idCliente, 'cliente');
+            }
+
+            if ($apagou && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=excluir_cliente id=%d', $idCliente));
+
+        return false;
+    }
+
+    /**
      * Remover todas as OS por cliente
      *
      * @param  array  $os
@@ -223,19 +273,14 @@ class Clientes_model extends CI_Model
      */
     public function removeClientOs($os)
     {
-        try {
-            foreach ($os as $o) {
-                $this->db->where('os_id', $o->idOs);
-                $this->db->delete('servicos_os');
+        foreach ($os as $o) {
+            foreach (['servicos_os' => 'os_id', 'produtos_os' => 'os_id', 'os' => 'idOs'] as $tabela => $campo) {
+                if ($this->db->where($campo, $o->idOs)->delete($tabela) === false) {
+                    log_message('error', sprintf('cliente remover_os falha os=%d', (int) $o->idOs));
 
-                $this->db->where('os_id', $o->idOs);
-                $this->db->delete('produtos_os');
-
-                $this->db->where('idOs', $o->idOs);
-                $this->db->delete('os');
+                    return false;
+                }
             }
-        } catch (Exception $e) {
-            return false;
         }
 
         return true;
@@ -262,16 +307,14 @@ class Clientes_model extends CI_Model
      */
     public function removeClientVendas($vendas)
     {
-        try {
-            foreach ($vendas as $v) {
-                $this->db->where('vendas_id', $v->idVendas);
-                $this->db->delete('itens_de_vendas');
+        foreach ($vendas as $v) {
+            foreach (['itens_de_vendas' => 'vendas_id', 'vendas' => 'idVendas'] as $tabela => $campo) {
+                if ($this->db->where($campo, $v->idVendas)->delete($tabela) === false) {
+                    log_message('error', sprintf('cliente remover_venda falha venda=%d', (int) $v->idVendas));
 
-                $this->db->where('idVendas', $v->idVendas);
-                $this->db->delete('vendas');
+                    return false;
+                }
             }
-        } catch (Exception $e) {
-            return false;
         }
 
         return true;

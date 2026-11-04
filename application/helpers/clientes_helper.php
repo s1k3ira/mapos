@@ -39,14 +39,15 @@ if (! function_exists('clienteDadosDoFormulario')) {
      * Dados da tabela clientes a partir do POST já validado.
      *
      * - pessoa_fisica: CPF tem 11 caracteres; o resto é CNPJ.
-     * - senha: a digitada; num cadastro novo sem senha, o CPF/CNPJ sem
-     *   pontuação (como na v4, e a área do cliente avisa); sem documento, uma
-     *   senha aleatória que ninguém conhece. Na edição, sem senha, não muda.
+     * - senha: a digitada; num cadastro novo sem senha, a $senhaGerada (que o
+     *   controller mostra ao operador) ou, sem ela, uma senha aleatória que
+     *   ninguém conhece. O documento nunca é a senha. Na edição, sem senha, não
+     *   muda. A função não grava senha_trocar: quem marca é o controller.
      * - estado: só uma UF válida.
      *
      * @param  mixed  $post  $this->input->post()
      */
-    function clienteDadosDoFormulario($post, bool $novo): array
+    function clienteDadosDoFormulario($post, bool $novo, ?string $senhaGerada = null): array
     {
         $post = is_array($post) ? $post : [];
         $texto = static fn (string $campo): string => is_string($post[$campo] ?? null) ? trim($post[$campo]) : '';
@@ -65,10 +66,49 @@ if (! function_exists('clienteDadosDoFormulario')) {
         if ($senha !== '') {
             $dados['senha'] = password_hash($senha, PASSWORD_DEFAULT);
         } elseif ($novo) {
-            $dados['senha'] = password_hash($documento !== '' ? $documento : bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
+            $dados['senha'] = password_hash(is_string($senhaGerada) && $senhaGerada !== '' ? $senhaGerada : bin2hex(random_bytes(16)), PASSWORD_DEFAULT);
         }
 
         return $dados;
+    }
+}
+
+if (! function_exists('clienteEnviarSenhaInicial')) {
+    /**
+     * Envia a senha inicial ao cliente pelo SMTP, direto (send(true)), fora da
+     * fila: a senha em claro não pode ficar em email_queue. Nunca loga o HTML,
+     * a senha nem o e-mail.
+     *
+     * @param  object       $email     Mailer (MY_Email)
+     * @param  object|null  $emitente  Dados do emitente (email, nome)
+     * @param  object       $cliente   idClientes e email
+     * @return bool true = o SMTP aceitou
+     */
+    function clienteEnviarSenhaInicial(object $email, ?object $emitente, object $cliente, string $html): bool
+    {
+        $destino = trim((string) ($cliente->email ?? ''));
+        if ($emitente === null || ! filter_var($destino, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        try {
+            $email->clear(true);
+            $email->from((string) $emitente->email, (string) $emitente->nome);
+            $email->to($destino);
+            $email->subject('Sua senha de acesso à área do cliente');
+            $email->message($html);
+            $enviado = (bool) $email->send(true);
+            $erro = 'envio';
+        } catch (\Throwable $e) {
+            $enviado = false;
+            $erro = $e::class;
+        }
+
+        if (! $enviado) {
+            log_message('error', sprintf('email senha_inicial falha cliente=%d erro=%s', (int) $cliente->idClientes, $erro));
+        }
+
+        return $enviado;
     }
 }
 
