@@ -245,7 +245,8 @@ phases:
           status: done
           title: Login do painel e da área do cliente por status HTTP no módulo de login
     - name: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
-      status: pending
+      started_at: "2026-11-04 06:47:36"
+      status: in-progress
       tasks:
         - complexity: M
           deps:
@@ -277,5 +278,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 06:47:33"
+updated_at: "2026-11-04 06:47:36"
 ---
