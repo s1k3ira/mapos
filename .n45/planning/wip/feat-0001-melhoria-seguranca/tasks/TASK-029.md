@@ -3,41 +3,43 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-04 01:19:31"
 criteria:
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='renovarCsrf copia' tests/js/logout.test.mjs
       text: renovarCsrf copia o valor do cookie CSRF (novo123) para o campo hidden do formulário e devolve true
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='renovarCsrf (sem o cookie|cria o campo)' tests/js/logout.test.mjs
       text: renovarCsrf sem o cookie mantém o valor velho e devolve false; com cookie e sem campo cria o hidden com o valor do cookie
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='iniciar renova no submit' tests/js/logout.test.mjs
       text: iniciar(form) renova o token no submit sem cancelar o envio (preventDefault não chamado)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMenuDoUsuarioSaiPorFormularioPost tests/Unit/LogoutPorPostTest.php
       text: Menu do usuário (tema/conteudo) renderiza 'Sair do Sistema' como form POST para login/sair com data-module=layout/sair, hidden MAPOS_TOKEN=hash-csrf e button submit, sem href para login/sair
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSidebarSaiPorFormularioPost tests/Unit/LogoutPorPostTest.php
       text: Sidebar (tema/menu) renderiza o Sair como form POST com data-module=layout/sair, campo CSRF e button submit com title Sair e rótulo sr-only Sair, sem href para login/sair
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testBancoDesatualizadoSaiPorFormularioPost tests/Unit/LogoutPorPostTest.php
       text: Banco desatualizado (com e sem cSistema) renderiza o Sair como form POST para acaoSair com o hidden csrfNome/csrfValor e button outline submit
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testVoltarAoLoginDoDoisFatoresVaiParaOLogin tests/Unit/LogoutPorPostTest.php
       text: Tela do segundo fator tem Voltar ao login com href site_url('login') e nenhuma ocorrência de login/sair
-    - done: false
+    - done: true
       test: '! grep -nE "href.{0,40}login/s[a]ir" application/views/tema/conteudo.php application/views/tema/menu.php application/views/mapos/banco-desatualizado.php application/views/mapos/login_dois_fatores.php'
       text: Nenhum link GET para login/sair nas views do painel tocadas
-    - done: false
+    - done: true
       test: php scripts/check-escape.php && php scripts/check-inline-script.php
       text: Guardas de escape e de script inline não sobem a baseline
-    - done: false
+    - done: true
       test: npm run build && git diff --exit-code -- assets/dist/app.css
       text: CSS compilado em dia com as views
-    - done: false
+    - done: true
       test: npm run test:js && application/vendor/bin/phpunit tests/Unit/LogoutPorPostTest.php tests/Unit/BancoDesatualizadoTest.php tests/Unit/LayoutTest.php tests/Unit/AcessibilidadeTest.php tests/Unit/BuscaGlobalTest.php
       text: Testes JS e as suítes de layout e de banco desatualizado passam
 deps:
     - TASK-025
+diff_base: b51198ae134ba0cabd3618c07096f541fb79bb9c
+diff_tip: c9d04791c0207cc7869f0f81b253d3aedfea22c0
 files:
     - assets/js/modules/layout/sair.js
     - tests/js/logout.test.mjs
@@ -50,18 +52,21 @@ files:
 id: TASK-029
 linter: php scripts/check-escape.php && php scripts/check-inline-script.php
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    - Módulo JS `assets/js/modules/layout/sair.js`: `renovarCsrf(formulario, raiz = document)` copia o cookie CSRF para o hidden do form (cria o campo se faltar; `false` sem cookie) e `export default iniciar(formulario)` renova no `submit` sem cancelar o envio. Uso: `data-module="layout/sair"` via `js_module('layout/sair')`; reaproveitável pela área do cliente.
+    - "Sair" do painel é `<form method="post" action=".../login/sair">` com hidden CSRF em `tema/conteudo.php`, `tema/menu.php` e `mapos/banco-desatualizado.php` (este sem JS, com `acaoSair`/`csrfNome`/`csrfValor`).
+    - `mapos/login_dois_fatores.php`: "Voltar ao login" é link GET para `site_url('login')`.
 persona: frontend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
     green: false
     red: false
     refactor: false
 tests: node --test tests/js/logout.test.mjs && application/vendor/bin/phpunit tests/Unit/LogoutPorPostTest.php
 title: Sair por formulário POST nas telas do painel
-updated_at: "2026-11-04 01:19:31"
+updated_at: "2026-11-04 06:07:08"
 ---
 ## Contexto
 

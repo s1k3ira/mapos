@@ -3,63 +3,65 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-04 01:16:54"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLimiteDiarioLidoDoEnv tests/Unit/LimiteDeOsDoClienteTest.php
       text: clienteOsLimiteDiario() devolve 10 sem a variável, 3 com '3', 0 com '0' e 10 com '', 'abc', '-2' e '2.5'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSegundosAteAmanha tests/Unit/LimiteDeOsDoClienteTest.php
       text: segundosAteAmanha() devolve 60 às 23:59:00 e 86400 às 00:00:00
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testAberturasDeHojeContaSoAsDoClienteNoDia|testAberturasSemHistoricoDevolveZero' tests/Unit/LimiteDeOsDoClienteTest.php
       text: aberturasDeOsHoje(7) conta só as aberturas do próprio cliente 7 desde 00:00 de hoje (2), ignorando a de ontem, a OS aberta pelo operador e a do cliente 8; sem os_historico devolve 0
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAbrirOsAbaixoDoLimiteCriaOsEHistorico tests/Unit/LimiteDeOsDoClienteTest.php
       text: abrirOsDoCliente abaixo do limite cria a OS com clientes_id e uma linha de os_historico (status_anterior NULL, status_novo Aberto, usuarios_id NULL) e devolve ['ok'=>true,'id'=>id]
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testDecimaPrimeiraAberturaNaoCriaAOs|testLimiteZeroDesligaOLimite' tests/Unit/LimiteDeOsDoClienteTest.php
       text: abrirOsDoCliente no limite devolve ['ok'=>false,'motivo'=>'limite'] sem nenhuma OS nem histórico novo; com limite 0 cria mesmo com 15 aberturas no dia
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaNoHistoricoDesfazAOs tests/Unit/LimiteDeOsDoClienteTest.php
       text: Falha no insert do histórico desfaz a OS (rollback), devolve motivo 'erro' e loga 'transacao rollback operacao=abrir_os_cliente id=7'
-    - done: false
+    - done: true
       test: grep -qE 'FOR UPDATE' application/models/Conecte_model.php
       text: O lock da linha do cliente é feito com SELECT ... FOR UPDATE isolado em travarCliente()
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTecnicoComMenosOsRecebeANova tests/Unit/LimiteDeOsDoClienteTest.php
       text: tecnicoParaNovaOs() do Conecte_model devolve o usuário com menos OS (4)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testApiAcimaDoLimiteResponde429ComRetryAfter tests/Unit/LimiteDeOsDoClienteTest.php
       text: 'POST /api/v1/client/os acima do limite responde 429 com a mensagem de limite e Retry-After: 60 às 23:59:00, sem criar OS'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testApiAbaixoDoLimiteResponde201EGravaHistorico tests/Unit/LimiteDeOsDoClienteTest.php
       text: POST /api/v1/client/os abaixo do limite responde 201 com os_id e grava os_historico
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testApiComDadosInvalidosResponde422 tests/Unit/LimiteDeOsDoClienteTest.php
       text: POST /api/v1/client/os com descricaoProduto em branco responde 422 erros.descricaoProduto 'Informe o equipamento ou serviço.' e com defeito de 2001 caracteres responde 422 erros.defeito 'Use no máximo 2000 caracteres.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testApiComFalhaAoGravarResponde500 tests/Unit/LimiteDeOsDoClienteTest.php
       text: POST /api/v1/client/os com falha do model responde 500 'Ocorreu um erro ao criar a ordem de serviço.'
-    - done: false
+    - done: true
       test: '! grep -nE ''\$\{osId\}|REMOTE_ADDR'' application/controllers/api/v1/client/ClientOsController.php'
       text: ClientOsController não usa mais a interpolação ${} deprecada nem $_SERVER['REMOTE_ADDR'] no os_post
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAdicionarOsNoLimiteMostraAMensagem tests/Unit/AreaDoClienteSessaoTest.php
       text: POST /mine/adicionarOs acima do limite re-renderiza conecte/adicionarOs com _geral = mensagem de limite e os valores preservados, sem OS nova e sem e-mail
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAdicionarOsAbaixoDoLimiteCriaENotifica tests/Unit/AreaDoClienteSessaoTest.php
       text: POST /mine/adicionarOs abaixo do limite cria a OS, grava o histórico uma única vez, notifica a equipe e vai para mine/visualizarOs/<id>
-    - done: false
+    - done: true
       test: 'grep -qx ''CLIENTE_OS_LIMITE_DIARIO=10'' application/.env.example && php -r ''exit(parse_ini_file("application/.env.example", false, INI_SCANNER_RAW) === false ? 1 : 0);'''
       text: .env.example lista CLIENTE_OS_LIMITE_DIARIO=10 e continua legível por parse_ini_file
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/LimiteDeOsDoClienteTest.php tests/Unit/AreaDoClienteSessaoTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/ApiClienteTokensTest.php tests/Unit/CookieSeguroTest.php
       text: Suítes da área do cliente, da API do cliente e do .env passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/models/Conecte_model.php application/helpers/conecte_helper.php application/controllers/Mine.php application/controllers/api/v1/client/ClientOsController.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-023
     - TASK-025
+diff_base: c9d04791c0207cc7869f0f81b253d3aedfea22c0
+diff_tip: c4ece49e9721056fa0a1699ba4e2fa1accfe1cc3
 files:
     - application/helpers/conecte_helper.php
     - application/models/Conecte_model.php
@@ -71,18 +73,23 @@ files:
 id: TASK-027
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    - `POST /api/v1/client/os` (Bearer de cliente, JSON `descricaoProduto` obrigatório, `defeito`/`observacoes` opcionais, até 2000 chars): 201 `{status:true,message,os_id}` com histórico gravado; 422 `{status:false,message:'Dados inválidos.',erros:{campo:msg}}`; 429 com mensagem de limite + `Retry-After` (segundos até 00:00); 401/403 do `logged_client()`; 500 em falha de atribuição de técnico ou de gravação.
+    - Tela `POST /mine/adicionarOs`: acima do limite re-renderiza `conecte/adicionarOs` com `_geral` = mensagem de limite e valores preservados; abaixo, cria OS, notifica equipe (`notificarEquipeDaNovaOs`) e redireciona para `mine/visualizarOs/<id>`.
+    - `Conecte_model`: `LIMITE_OS_MENSAGEM`, `aberturasDeOsHoje(int): int`, `abrirOsDoCliente(int $idCliente, array $dados, int $limite): array` (`['ok'=>true,'id'=>int]` | `['ok'=>false,'motivo'=>'limite'|'erro']`, atômico com lock `travarCliente()` + OS + histórico), `tecnicoParaNovaOs(): ?int`.
+    - `conecte_helper`: `clienteOsLimiteDiario(): int` (env `CLIENTE_OS_LIMITE_DIARIO`, padrão 10, 0 desliga), `segundosAteAmanha(?int): int`, `conecteErrosDaNovaOs(array): array`.
+    - Config: `CLIENTE_OS_LIMITE_DIARIO` em `application/.env.example`.
 persona: backend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/LimiteDeOsDoClienteTest.php tests/Unit/AreaDoClienteSessaoTest.php
 title: Limite diário de abertura de OS pelo cliente na tela e na API
-updated_at: "2026-11-04 01:16:54"
+updated_at: "2026-11-04 06:12:50"
 ---
 ## Contexto
 

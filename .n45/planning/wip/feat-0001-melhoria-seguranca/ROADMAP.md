@@ -218,7 +218,7 @@ phases:
             - TASK-025
           id: TASK-027
           persona: backend
-          status: pending
+          status: done
           title: Limite diário de abertura de OS pelo cliente na tela e na API
         - complexity: M
           deps:
@@ -233,7 +233,7 @@ phases:
             - TASK-025
           id: TASK-029
           persona: frontend
-          status: pending
+          status: done
           title: Sair por formulário POST em todas as telas
         - complexity: M
           deps:
@@ -276,5 +276,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 01:46:32"
+updated_at: "2026-11-04 06:12:21"
 ---
