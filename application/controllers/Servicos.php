@@ -139,14 +139,16 @@ class Servicos extends MY_Controller
             redirect(base_url());
         }
 
-        $id = $this->input->post('id');
-        if ($id == null) {
+        $id = (int) $this->input->post('id');
+        if ($id <= 0) {
             $this->session->set_flashdata('error', 'Erro ao tentar excluir serviço.');
             redirect(site_url('servicos/gerenciar/'));
         }
 
-        $this->servicos_model->delete('servicos_os', 'servicos_id', $id);
-        $this->servicos_model->delete('servicos', 'idServicos', $id);
+        if (! $this->servicos_model->excluirComDependentes($id)) {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
+            redirect(site_url('servicos') . listagemQuery(listagemFiltros(self::FILTROS, $this->input->get())));
+        }
 
         log_info('Removeu um serviço. ID: ' . $id);
 

@@ -179,9 +179,10 @@ class Produtos extends MY_Controller
             redirect(site_url('produtos'));
         }
 
-        $this->produtos_model->delete('produtos_os', 'produtos_id', $id);
-        $this->produtos_model->delete('itens_de_vendas', 'produtos_id', $id);
-        $this->produtos_model->delete('produtos', 'idProdutos', $id);
+        if (! $this->produtos_model->excluirComDependentes($id)) {
+            $this->session->set_flashdata('error', 'Não foi possível excluir. Nada foi alterado.');
+            redirect(site_url('produtos') . listagemQuery(listagemFiltros(self::FILTROS, $this->input->get())));
+        }
 
         log_info('Removeu um produto. ID: ' . $id);
 
