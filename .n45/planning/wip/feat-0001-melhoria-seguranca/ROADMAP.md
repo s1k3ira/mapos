@@ -259,7 +259,7 @@ phases:
             - TASK-028
           id: TASK-031
           persona: devops
-          status: pending
+          status: done
           title: Nginx sem segredo no log, cron da fila e smoke de segurança
         - complexity: M
           deps:
@@ -278,5 +278,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 06:47:36"
+updated_at: "2026-11-04 07:06:18"
 ---

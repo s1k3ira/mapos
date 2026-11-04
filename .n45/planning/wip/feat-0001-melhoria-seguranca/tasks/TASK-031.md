@@ -3,52 +3,52 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-04 06:56:22"
 criteria:
-    - done: false
+    - done: true
       test: NGINX_HOST=localhost NGINX_PORT=8000 envsubst '$NGINX_HOST $NGINX_PORT' < docker/etc/nginx/default.template.conf | diff - docker/etc/nginx/default.conf
       text: Template renderizado com localhost/8000 é idêntico ao default.conf (a sobrescrita do compose vira no-op)
-    - done: false
+    - done: true
       test: grep -q 'location ^~ /application/' docker/etc/nginx/default.template.conf && grep -q 'location ^~ /updates/' docker/etc/nginx/default.template.conf && grep -qF '(scripts|tests|docker|docs)' docker/etc/nginx/default.template.conf
       text: Template passa a bloquear application/, updates/ e scripts|tests|docker|docs como o default.conf
-    - done: false
+    - done: true
       test: grep -qE 'map[[:space:]]+\$request_uri[[:space:]]+\$loggable' docker/etc/nginx/default.template.conf && grep -qE '~webhooks/efi/[[:space:]]+0;' docker/etc/nginx/default.template.conf
       text: map do $request_uri define $loggable = 0 para webhooks/efi/ no template
-    - done: false
+    - done: true
       test: grep -qE 'access_log[^;]*if=\$loggable;' docker/etc/nginx/default.template.conf && grep -qE 'access_log[^;]*if=\$loggable;' docker/etc/nginx/default.conf
       text: access_log do server usa if=$loggable no template e no default.conf
-    - done: false
+    - done: true
       test: docker run --rm --add-host php-fpm:127.0.0.1 -v "$(pwd)/docker/etc/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t
       text: nginx aceita a configuração gerada
-    - done: false
+    - done: true
       test: '! grep -nE ''location[^{]*webhooks'' docker/etc/nginx/default.template.conf docker/etc/nginx/default.conf && grep -q ''client_max_body_size 64M;'' docker/etc/nginx/default.template.conf'
       text: Webhook continua no location / com client_max_body_size do server (nenhum location próprio de webhooks)
-    - done: false
+    - done: true
       test: grep -qE '^\*/2 .*index\.php email/process .*2>&1$' docker/etc/php/cron-jobs && grep -qE '^\*/5 .*index\.php email/retry .*2>&1$' docker/etc/php/cron-jobs
       text: cron mantém email/process a cada 2 min e email/retry a cada 5 min, com stderr no log
-    - done: false
+    - done: true
       test: bash -n scripts/smoke-seguranca.sh && test -x scripts/smoke-seguranca.sh
       text: smoke-seguranca.sh é bash sintaticamente válido e executável
-    - done: false
+    - done: true
       test: grep -qE 'up -d' scripts/smoke-seguranca.sh && grep -qE 'trap .*EXIT' scripts/smoke-seguranca.sh && grep -qE ' down' scripts/smoke-seguranca.sh
       text: Smoke sobe e derruba pelo comando do RUNBOOK com trap em EXIT
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='smoke sai 0' tests/js/smoke-seguranca.test.mjs
       text: Com as 12 rotas no veredito esperado o smoke imprime 12 linhas OK e sai 0
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='smoke sai 1' tests/js/smoke-seguranca.test.mjs
       text: GET login/sair respondendo 200 gera FALHOU nessa linha, 11 OK e exit 1
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='login' tests/js/smoke-seguranca.test.mjs
       text: Login aceita 403 e 422 e reprova 500
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='GET / com 200 passa' tests/js/smoke-seguranca.test.mjs
       text: GET / com 200 passa (200 e 302 aceitos)
-    - done: false
+    - done: true
       test: node --test --test-name-pattern='não sobe' tests/js/smoke-seguranca.test.mjs
       text: Ambiente que não responde dentro de SMOKE_ESPERA_SEGUNDOS sai 2 sem rodar verificação
-    - done: false
+    - done: true
       test: '! grep -nE ''spawnSync|execFileSync|execSync'' tests/js/smoke-seguranca.test.mjs'
       text: Teste do smoke roda o script de forma assíncrona (spawnSync bloquearia o servidor do próprio teste)
-    - done: false
+    - done: true
       test: node --test tests/js/smoke-seguranca.test.mjs
       text: Suíte do smoke passando
 deps:
@@ -59,6 +59,8 @@ deps:
     - TASK-025
     - TASK-027
     - TASK-028
+diff_base: e120e16e016bb303e4cf8defbe5291939732770f
+diff_tip: 9880bba78fca7cd825bc67774ec9c2c88d2bea64
 files:
     - docker/etc/nginx/default.template.conf
     - docker/etc/nginx/default.conf
@@ -68,14 +70,18 @@ files:
 id: TASK-031
 linter: bash -n scripts/smoke-seguranca.sh
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    - nginx: `default.template.conf` é a fonte única; renderizado com `NGINX_HOST=localhost NGINX_PORT=8000` gera o `default.conf` byte a byte. Inclui `map $request_uri $loggable` (0 para `webhooks/efi/`) e `access_log ... combined if=$loggable`; bloqueios de `application/`, `updates/`, `scripts|tests|docker|docs`. Sem `location` própria de webhooks.
+    - cron: `email/process` (*/2) e `email/retry` (*/5) com `>> /var/log/cron.log 2>&1`.
+    - `scripts/smoke-seguranca.sh`: 12 verificações; env `SMOKE_URL`, `SMOKE_ESPERA_SEGUNDOS`, `SMOKE_SEM_DOCKER`; saída 0 ok, 1 veredito falhou, 2 ambiente não subiu/sem compose; linhas `OK`/`FALHOU`.
+    - `tests/js/smoke-seguranca.test.mjs`: 6 testes com servidor Node falso.
 persona: devops
 phase: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tests: node --test tests/js/smoke-seguranca.test.mjs
 title: Nginx sem segredo no log, cron da fila e smoke de segurança
-updated_at: "2026-11-04 06:56:22"
+updated_at: "2026-11-04 07:06:42"
 ---
 ## Contexto
 
