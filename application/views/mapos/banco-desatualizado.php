@@ -42,12 +42,18 @@ $titulo = 'Banco de dados desatualizado';
                     <input type="hidden" name="<?= e($csrfNome) ?>" value="<?= e($csrfValor) ?>">
                     <?= component('button', ['label' => 'Atualizar banco de dados', 'type' => 'submit', 'icon' => 'download']) ?>
                 </form>
-                <?= component('button', ['label' => 'Sair', 'variant' => 'outline', 'href' => $acaoSair]) ?>
+                <form method="post" action="<?= e($acaoSair) ?>">
+                    <input type="hidden" name="<?= e($csrfNome) ?>" value="<?= e($csrfValor) ?>">
+                    <?= component('button', ['label' => 'Sair', 'variant' => 'outline', 'type' => 'submit']) ?>
+                </form>
             </div>
         <?php } else { ?>
             <p class="text-body-lg text-muted">O sistema aguarda uma atualização do banco de dados. Avise o administrador.</p>
             <div class="mt-2">
-                <?= component('button', ['label' => 'Sair', 'variant' => 'outline', 'href' => $acaoSair]) ?>
+                <form method="post" action="<?= e($acaoSair) ?>">
+                    <input type="hidden" name="<?= e($csrfNome) ?>" value="<?= e($csrfValor) ?>">
+                    <?= component('button', ['label' => 'Sair', 'variant' => 'outline', 'type' => 'submit']) ?>
+                </form>
             </div>
         <?php } ?>
     </main>

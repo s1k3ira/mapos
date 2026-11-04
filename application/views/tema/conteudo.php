@@ -97,7 +97,10 @@
             <a href="<?= e(site_url('mine')) ?>" target="_blank" rel="noopener" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-ring"><?= icon('circle-user', ['class' => 'size-[18px] text-muted']) ?>Área do Cliente</a>
             <a href="<?= e(site_url('mapos/minhaConta')) ?>" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-ring"><?= icon('id-card', ['class' => 'size-[18px] text-muted']) ?>Meu Perfil</a>
             <div class="my-1 border-t border-border" role="separator"></div>
-            <a href="<?= e(site_url('login/sair')) ?>" class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-ring"><?= icon('log-out', ['class' => 'size-[18px] text-muted']) ?>Sair do Sistema</a>
+            <form method="post" action="<?= e(site_url('login/sair')) ?>" <?= js_module('layout/sair') ?>>
+              <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">
+              <button type="submit" class="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-text hover:bg-surface-subtle focus-visible:outline-3 focus-visible:outline-ring"><?= icon('log-out', ['class' => 'size-[18px] text-muted']) ?>Sair do Sistema</button>
+            </form>
           </div>
         </details>
       </div>

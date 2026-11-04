@@ -102,10 +102,13 @@ $classeSublink = 'relative flex min-h-9 items-center rounded-md py-1.5 pr-2.5 pl
           <span class="block truncate text-sm font-semibold text-text"><?= e($layout['usuario']) ?></span>
           <a href="<?= e(site_url('mapos/minhaConta')) ?>" class="text-caption text-muted hover:text-text hover:underline">Meu perfil</a>
         </span>
-        <a href="<?= e(site_url('login/sair')) ?>" class="v5-rotulo inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-subtle hover:text-text <?= e($foco) ?>" title="Sair">
-          <?= icon('log-out', ['class' => 'size-5']) ?>
-          <span class="sr-only">Sair</span>
-        </a>
+        <form method="post" action="<?= e(site_url('login/sair')) ?>" <?= js_module('layout/sair') ?> class="v5-rotulo shrink-0">
+          <input type="hidden" name="<?= e($this->security->get_csrf_token_name()) ?>" value="<?= e($this->security->get_csrf_hash()) ?>">
+          <button type="submit" class="inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted hover:bg-surface-subtle hover:text-text <?= e($foco) ?>" title="Sair">
+            <?= icon('log-out', ['class' => 'size-5']) ?>
+            <span class="sr-only">Sair</span>
+          </button>
+        </form>
       </div>
     </div>
   </aside>
