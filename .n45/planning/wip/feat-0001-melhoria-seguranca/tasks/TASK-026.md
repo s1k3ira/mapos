@@ -3,36 +3,38 @@ checkpoint: null
 complexity: P
 created_at: "2026-11-04 01:15:20"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMarcaSoQuemTemOProprioDocumentoComoSenha tests/Unit/MarcarSenhasLegadasTest.php
       text: marcarSenhasLegadas() marca só os clientes com senha_trocar 0 cuja senha é o documento sem pontuação (inclusive CNPJ alfanumérico) e devolve 2 na tabela da task, sem tocar sem documento, sem senha ou já marcados
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSegundaExecucaoNaoMarcaDeNovo tests/Unit/MarcarSenhasLegadasTest.php
       text: Segunda execução seguida devolve 0
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaDeBancoDevolveFalseELoga tests/Unit/MarcarSenhasLegadasTest.php
       text: Falha de banco faz o model devolver false com log error 'cliente marcar_senhas_legadas falha' e o comando imprimir 'Não foi possível marcar as senhas. Veja o log.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testComandoImprimeSoAQuantidade tests/Unit/MarcarSenhasLegadasTest.php
       text: php index.php tools marcarSenhasLegadas imprime exatamente '1 cliente(s) marcado(s)' e nenhum documento ou hash
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAjudaListaOComando tests/Unit/MarcarSenhasLegadasTest.php
       text: Tools::help() lista o comando marcarSenhasLegadas
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testMarcarNaoMexeNaSenhaNemNasVersoes tests/Unit/MarcarSenhasLegadasTest.php
       text: O model não altera senha, sessao_versao nem token_versao ao marcar
-    - done: false
+    - done: true
       test: grep -qE 'password_verify\(\$documento' application/models/Clientes_model.php
       text: Comparação usa password_verify sobre o documento sem pontuação
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/MarcarSenhasLegadasTest.php tests/Unit/SenhaClienteTest.php tests/Unit/ClientesSenhaInicialTest.php
       text: Suítes de cliente passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/models/Clientes_model.php application/controllers/Tools.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-001
     - TASK-002
+diff_base: 9715cd82c84841daa865834e80f1ea5d5ab03bf4
+diff_tip: 5cdda4c58951d69a0a44ff0a74066668279b77a7
 files:
     - application/models/Clientes_model.php
     - application/controllers/Tools.php
@@ -40,18 +42,22 @@ files:
 id: TASK-026
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Comando de CLI (sem endpoint HTTP)**
+
+    - `php index.php tools marcarSenhasLegadas` (`Tools::marcarSenhasLegadas()`): marca `senha_trocar = 1` nos clientes cuja senha ainda é o documento sem pontuação. Imprime exatamente `"<n> cliente(s) marcado(s)"`; em falha de banco imprime `"Não foi possível marcar as senhas. Veja o log."`. Nunca imprime documento, senha ou hash. Listado em `Tools::help()`.
+    - `Clientes_model::marcarSenhasLegadas(int $lote = 500): int|false`: percorre por faixa de id só quem tem `senha_trocar = 0`, compara com `password_verify` sobre `preg_replace('/[^A-Za-z0-9]/', '', documento)` (CNPJ alfanumérico incluso), ignora documento ou senha vazios, atualiza `senha_trocar` em lote e devolve o total (segunda execução devolve 0). Falha de `get()`/`update()` loga `error` `cliente marcar_senhas_legadas falha` e devolve `false`. Não altera `senha`, `sessao_versao` nem `token_versao`.
 persona: backend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/MarcarSenhasLegadasTest.php
 title: Comando marcarSenhasLegadas para clientes com senha igual ao documento
-updated_at: "2026-11-04 01:15:20"
+updated_at: "2026-11-04 01:46:15"
 ---
 ## Contexto
 

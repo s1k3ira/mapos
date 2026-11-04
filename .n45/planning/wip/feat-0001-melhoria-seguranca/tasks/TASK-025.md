@@ -3,62 +3,64 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-04 01:14:38"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEmailInvalidoResponde422ComErrosPorCampo tests/Unit/LoginPorStatusTest.php
       text: Login do painel com validação falha responde 422 JSON com erros por campo, message 'Confira os campos destacados.' e sem contar falha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSenhaErradaResponde401ComMensagemGenerica tests/Unit/LoginPorStatusTest.php
       text: Login do painel com senha errada responde 401 application/json com {result:false, message:'Os dados de acesso estão incorretos.', <csrf>:hash} e conta a falha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEmailDesconhecidoResponde401ComAMesmaMensagem tests/Unit/LoginPorStatusTest.php
       text: Login do painel com e-mail sem conta responde 401 com a mesma message da senha errada
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testContaBloqueadaResponde403SoComASenhaCerta tests/Unit/LoginPorStatusTest.php
       text: Conta expirada e grupo desativado respondem 403 com o motivo só depois da senha certa (senha errada na mesma conta continua 401)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testBloqueadoResponde429ComRetryAfter tests/Unit/LoginPorStatusTest.php
       text: 'Login do painel bloqueado responde 429 com header Retry-After: 60 e retry_after 60 no corpo, sem conferir a senha'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testSucessoResponde200EmJson|testDoisFatoresResponde200ComDestino' tests/Unit/LoginPorStatusTest.php
       text: Login do painel certo responde 200 {result:true} em JSON e abre a sessão; com 2FA responde 200 {result:true, destino:site_url('login/doisFatores')} sem logado na sessão
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTokenCsrfVemNoCampoDeNomeConfigurado tests/Unit/LoginPorStatusTest.php
       text: Com get_csrf_token_name() = 'OUTRO' a resposta de falha traz a chave OUTRO com o hash e não traz MAPOS_TOKEN
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testRespostasDoLoginNuncaTrazemRedirect tests/Unit/LoginPorStatusTest.php
       text: Nenhuma resposta de login traz a chave redirect (o http.js a trataria como sessão expirada)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testGetEmLogoutResponde405SemEncerrarASessao|testPostEmLogoutEncerraASessaoEVaiAoLogin' tests/Unit/LoginPorStatusTest.php
       text: 'GET /login/sair responde 405 com Allow: POST e a sessão continua; POST encerra a sessão (sess_destroy) e vai para site_url(''login?saiu=1'')'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testIndexMostraVoceSaiuComSaiu|testIndexDescartaODoisFatoresPendente' tests/Unit/LoginPorStatusTest.php
       text: Login::index passa sucesso 'Você saiu.' com ?saiu=1 (null sem) e descarta o dois_fatores pendente da sessão
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLoginSemDeprecated tests/Unit/LoginPorStatusTest.php
       text: Fluxos 422, 401 e 200 do login do painel rodam sem Deprecated do PHP (semDeprecated)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testLoginDoClienteComEmailInvalidoResponde422|testLoginDoClienteComSenhaErradaResponde401' tests/Unit/AreaDoClienteSessaoTest.php
       text: Login do cliente com validação falha responde 422 com erros por campo e com senha errada responde 401 com a mensagem genérica e o token CSRF no campo configurado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testLoginDoClienteBloqueadoResponde429ComRetryAfter|testLoginDoClienteComSucessoResponde200EmJson' tests/Unit/AreaDoClienteSessaoTest.php
       text: 'Login do cliente bloqueado responde 429 com Retry-After: 60 e retry_after 60; certo responde 200 {result:true} application/json e grava a sessão'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testGetEmLogoutDoClienteResponde405SemEncerrarASessao|testPostEmLogoutDoClienteEncerraASessao|testIndexDoClienteMostraVoceSaiu' tests/Unit/AreaDoClienteSessaoTest.php
       text: 'GET /mine/sair responde 405 com Allow: POST sem encerrar a sessão; POST encerra e vai para mine?saiu=1; Mine::index mostra ''Você saiu.'' com ?saiu=1'
-    - done: false
+    - done: true
       test: '! grep -nE ''echo json_encode|MAPOS_TOKEN'' application/controllers/Login.php application/controllers/Mine.php'
       text: Login.php e Mine.php não têm mais echo json_encode nem o campo fixo MAPOS_TOKEN
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testLoginEmDoisPassosNaoDaSessaoAntesDoCodigo|testTodosOsLoginsGastamOBcryptAntesDeTestarAConta' tests/Unit/DoisFatoresTest.php tests/Unit/SessaoELimiteTest.php
       text: Testes de fonte do 2FA e do bcrypt antes da conta continuam verdes sem edição
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/LoginPorStatusTest.php tests/Unit/AreaDoClienteSessaoTest.php tests/Unit/LoginTest.php tests/Unit/DoisFatoresTest.php tests/Unit/SessaoELimiteTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/BancoDesatualizadoTest.php
       text: Suítes do login, da área do cliente e da sessão passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/Login.php application/controllers/Mine.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-024
+diff_base: 5cdda4c58951d69a0a44ff0a74066668279b77a7
+diff_tip: da4be2e7e08ca5abb4c66b057e1ee703033ab61b
 files:
     - application/controllers/Login.php
     - application/controllers/Mine.php
@@ -67,18 +69,30 @@ files:
 id: TASK-025
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — contrato de login e logout (painel e área do cliente)**
+
+    - `POST /login/verificarLogin` e `POST /mine/login` respondem sempre `application/json; charset=utf-8`:
+      - 200 `{result:true}` (painel com 2FA: `{result:true, destino:site_url('login/doisFatores')}`, sem `logado` na sessão)
+      - 422 `{result:false, message:'Confira os campos destacados.', erros:{campo:msg}, <csrf_name>:hash}` (não conta falha)
+      - 401 `{result:false, message:'Os dados de acesso estão incorretos.', <csrf_name>:hash}` (igual para e-mail sem conta)
+      - 403 (só painel, depois da senha certa) `{result:false, message:<motivo>, <csrf_name>:hash}`
+      - 429 + header `Retry-After` `{result:false, message:Limite_login::MENSAGEM, retry_after:<int>, <csrf_name>:hash}`
+      - o campo do token é `security->get_csrf_token_name()` configurado; nunca `MAPOS_TOKEN`; nenhuma resposta traz `redirect`.
+    - `login/sair` e `mine/sair`: GET responde 405 com `Allow: POST` e mantém a sessão; POST faz `sess_destroy()` e redireciona para `login?saiu=1` / `mine?saiu=1`.
+    - `Login::index` e `Mine::index` passam `sucesso = 'Você saiu.'` com `?saiu=1`; `Login::index` descarta `dois_fatores` pendente.
+    - Seams `irPara()` / `encerrar()` protegidos em `Login`; `responderLogin()` privado em `Login` e `Mine`.
 persona: backend
 phase: Phase 4 — Login por status, logout seguro e limite de OS do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/LoginPorStatusTest.php tests/Unit/AreaDoClienteSessaoTest.php
 title: Login por status HTTP e logout só por POST no painel e na área do cliente
-updated_at: "2026-11-04 01:14:38"
+updated_at: "2026-11-04 01:46:54"
 ---
 ## Contexto
 

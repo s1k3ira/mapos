@@ -202,7 +202,7 @@ phases:
             - TASK-024
           id: TASK-025
           persona: backend
-          status: pending
+          status: done
           title: Login por status HTTP e logout só por POST no painel e na área do cliente
         - complexity: P
           deps:
@@ -210,7 +210,7 @@ phases:
             - TASK-002
           id: TASK-026
           persona: backend
-          status: pending
+          status: done
           title: Comando marcarSenhasLegadas para clientes com senha igual ao documento
         - complexity: G
           deps:
@@ -276,5 +276,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 01:03:52"
+updated_at: "2026-11-04 01:46:32"
 ---
