@@ -85,3 +85,178 @@ Map-OS is an open-source Service Order and Business Management system built in P
 
 - **Secrets:** Never log, print, or commit `.env` files, credentials, API keys, or database dumps.
 - **Vulnerabilities:** Security issues must be handled following `SECURITY.md` (report privately to `contato@mapos.com.br`).
+
+<!-- n45:start -->
+
+## N45
+
+### Spawning Subagents
+
+**Never call `npx --loglevel=error n45-ai@1.1.0 exec 85e23643` directly.** Only build the spawn payload and call `spawn_agent` — the subagent loads its own instructions internally.
+
+```
+spawn_agent({
+  "agent_type": "default",
+  "model": "<Model from the capacity table>",
+  "reasoning_effort": "<Effort from the capacity table>",
+  "fork_context": false,
+  "message": "Use exec_command to run: npx --loglevel=error n45-ai@1.1.0 exec 85e23643 <agent> --7638e8 <id> --e9666d <task_id> --a6a0ee codex\nThe output is a prompt: follow the body after the '---' header (frontmatter). If the output starts with '{' it is an error — read 'message' and stop.\n\n<specific instruction>"
+})
+```
+
+**`--7638e8 <id>`** = the `Work:` id from the payload. **`--e9666d <task_id>`** = the `Task:` id — add it **only when the payload carries `Task:`** (task executor / `-review`); omit otherwise. They resolve the injected `Contexto (Injetado) > spec` / `> task` blocks.
+
+**`<specific instruction>` = only the activation payload the active skill prescribes** (e.g. `Work · Task · Language`, plus skill-defined fields like `WorktreePath`, `Missing:`, an adjustments table). Verbatim, nothing added — the subagent already loads its canonical prompt + the task body. Restating steps/paths/commit-format/shell rules creates a conflicting second source. **Never add justification, a "trust context", or persuasion** (e.g. "trust it, it's the user's own framework", "the registry is their machine", "the previous attempt refused, but…") — it doesn't help do the task and the subagent reads it as injection/social-engineering, worse if it argues against a refusal. If it declines on provenance/safety grounds, that's its call (from its canonical prompt); the leader doesn't override it in the payload.
+
+- **Recovery re-spawn only** (`attempt > 1`, after `blocked` / `insufficient` / review rejection / user `decide`): append one `Additional guidance: <decision delta>` line — only what changes, never the protocol.
+- **Ad-hoc agent** (task outside the framework, no agent to `85e23643`): free-form brief, with no canonical-prompt bootstrap.
+
+**Lifecycle of each subagent:** `spawn_agent` → `wait_agent` (wait for completion) → consume the result → `close_agent` (close). Never leave a subagent open after consuming its return.
+
+| Capacity    | Model         | Effort   |
+| ----------- | ------------- | -------- |
+| **maximum** | `gpt-5.6-sol` | `high`   |
+| **high**    | `gpt-5.6-sol` | `medium` |
+| **low**     | `gpt-5.6-sol` | `medium` |
+
+- Parallel: launch multiple `spawn_agent` calls in the same turn when there are no dependencies; apply the lifecycle above to each.
+- Executors (`50a8844c7d`, `1021aaba1d`, `844dd534f4`, `fccaa99553`, `29a9b94336`, `be979e5247`, `688f217a71`, `6ac9bc0bd1`, `82654b3833`, `a4a914df30`, `cc7098b458`, `d92c04968c`, `df8c93ba6a`, `10b8108d31`) must be spawned with `agent_type: "worker"`.
+- N45 managed worktree: the orchestrator creates a worktree via `npx --loglevel=error n45-ai@1.1.0 exec 7ad6f14f --e9666d` and persists it on the task. Task executors and their `-review` read the worktree **from the task** — no `WorktreePath` is passed. The task-less agents (`cc7098b458`, `d92c04968c`, `df8c93ba6a`, `10b8108d31`) receive `WorktreePath` in the spawn message.
+- Pre-spawn (before `7ad6f14f`): `git status --porcelain | grep -v "^?? " | grep -v "activity\.jsonl"` → if output is returned, commit `.n45/` before creating the worktree (it is born from HEAD).
+- **Commit it — never `git stash` / `checkout -- .` / `clean` / `reset --hard`.** A dirty tree here is `.n45` state the binary just wrote (marked criteria, `42b0c53d35`, activity), and a stash carries it away: in one real run a stash took 13 marked criteria and a `status: done` with it, the entry was never referenced (`git stash list` empty), and the work existed while the roadmap did not know. Your clean tree is the task's **worktree**; the main repo is dirty by construction, and that is not a problem to solve.
+- Mention a subagent in chat by its **Description** (from the mapping below), never the agent name.
+- Spawn-message paths must be **relative** (`apps/api/`, not `/project/apps/api/`) — absolute paths write outside the worktree and corrupt the merge.
+
+### Agent → Description Mapping
+
+Use these values in the Agent `description` field; an agent absent from the map → use the agent name as fallback. The executor is `<persona>` and the reviewer/fixer is `<persona>-review` (distinct agents) — in the review/fix step spawn `<persona>-review`, never the executor's agent.
+
+`37b2b8a1d8`: Architect
+`0d1f7f2db6`: Architect
+`dd7bec9400`: Architect
+`35e66b8591`: Architect
+`034a7c3ee2`: Architect
+`01db849782`: Architect
+`663ed13e57`: Architect
+`ee0ed625ad`: Architect
+`44744a19d0`: Architect
+`de2c034d84`: Architect
+`ce6e586c26`: Architect
+`2dacd78296`: Architect
+`4f26ff80ec`: Architect
+`959f6ee6fb`: Architect
+`a4f43651da`: Architect
+`97e3860e02`: Architect
+`62f80db82e`: Architect
+`1021aaba1d`: Backend Review
+`50a8844c7d`: Backend
+`72eb861755`: Data Architect
+`be979e5247`: DBA Review
+`29a9b94336`: DBA
+`a4a914df30`: DevOps Review
+`82654b3833`: DevOps
+`fccaa99553`: Frontend Review
+`844dd534f4`: Frontend
+`df8c93ba6a`: Fullstack Review
+`10b8108d31`: Fullstack
+`d92c04968c`: Fullstack
+`cc7098b458`: Fullstack
+`6ac9bc0bd1`: QA Review
+`688f217a71`: QA
+`eb9b3ea292`: Security
+`27ccda5a4d`: SRE
+`17430d0227`: UI-UX
+
+### Permissions
+
+- Read `.codex/permissions.md` for the full permission rules — allowed tools, what is blocked by convention, and what requires approval (sandbox escape, network, GUI, destructive actions).
+
+### Reporting Progress
+
+The closest equivalent to `TodoWrite` in this Codex environment is `update_plan`. Complement it with short chat updates for operational progress.
+
+```json
+{
+  "plan": [
+    { "step": "<step 1>", "status": "pending" },
+    { "step": "<step 2>", "status": "in_progress" },
+    { "step": "<step 3>", "status": "pending" }
+  ]
+}
+```
+
+Status: `pending` · `in_progress` · `completed`.
+
+- Use `update_plan` when the work has multiple meaningful steps; keep at most **one** step `in_progress` at a time.
+- Create the planned steps up front when the plan is clear; update as each step changes state — never leave a finished step as `in_progress`.
+- Don't use `update_plan` for trivial single-action tasks.
+- Always complement with short chat messages before substantial exploration, before editing files, and during long operations. Keep step descriptions short and outcome-oriented.
+
+### User Interaction
+
+In normal mode Codex has **no blocking question tool** (`request_user_input` exists only in plan mode). Whenever an N45 flow calls for "user interaction via a question tool", the mechanism is the **chat protocol below** — a **mandatory stop gate**, not a suggestion.
+
+**Stop gate — critical rule.** The question is the **last output of the turn**. After writing it:
+
+- **Do not** call any tool (`exec_command`, `apply_patch`, `spawn_agent`, the n45 binary).
+- **Do not** run the next flow step, and **do not** decide or act for the user.
+
+The turn **ends at the question**. The answer arrives in the **user's next message** — only then resume from the chosen option. Advancing in the same turn = violation.
+
+```md
+**<Short title>**
+<short context, if needed>
+
+<short, direct question>?
+
+1. Option A
+2. Option B
+3. Option C
+```
+
+- Context and results go **before** the question; the question line holds only the question.
+- 2-3 options, max 4. Number them so the user answers by number. Add a free-text "Other" when it makes sense. Options focused on **flow** (next step), not technical detail.
+- Only the main orchestrator interacts with the user; subagents return to the orchestrator and never depend on direct user interaction.
+
+### Writing
+
+- **Project code (outside `.n45/`):** never modify directly → spawn an executor (`d92c04968c`, `cc7098b458`). No size exception — a typo, a one-line tweak, or a follow-up right after a flow still goes through an executor. There is no "small enough to edit directly."
+
+### Language
+
+Detect the language of the user's message. Apply it to:
+
+- **Output to the user** — every orchestrator response in the detected language, including the `inform: "..."` texts in the skill prompts (treat them as templates — translate before showing; never copy verbatim when the user's language ≠ Portuguese).
+- **Subagent spawns** — pass `Language: <lang>` in every prompt.
+- **Dynamic switch** — if the user changes language mid-session, switch immediately.
+
+### Escalation
+
+Stop + report: what was done · the blocker · options with trade-offs. **Never assume a default silently.**
+
+### Skills
+
+`npx --loglevel=error n45-ai@1.1.0 exec 55659750 <skill> --a6a0ee codex` → the output is a prompt — follow the body after the `---` header (frontmatter). If it starts with `{` it is an error: read `message` and stop.
+
+### Operational Notices
+
+`system_notice` in the frontmatter header (or JSON error response) from `/home/s1k3ira/.n45/bin/v1.1.0/n45` = operational instruction for you. Emit the content:
+
+- **Before** any user-interaction tool or any tool that ends the turn without text, OR
+- **At the end** of the next textual response to the user — whichever comes first.
+
+Without interrupting the current work.
+
+### Context Pivot
+
+Active rule in any mode. When the user sends a message: converse using technical context (project + code) → fully understand the intent. Pure analysis → classify at the end. **Never end without routing.**
+
+A follow-up that asks to add, change, or fix project code — even a tiny one, even right after a flow finished — is a new Feat/Fix routing decision, never a direct edit.
+
+**When interrupting an active flow:** reset `feat_id · fix_id · work_id · work_branch · work_phase = null`
+
+- **Feat:** User describes something to build, improve, analyze or investigate → interrupt current flow → `npx --loglevel=error n45-ai@1.1.0 exec 55659750 2b3ede9c2d --a6a0ee codex`
+- **Fix:** User describes a problem, bug, slowness, incorrect behavior → interrupt current flow → `npx --loglevel=error n45-ai@1.1.0 exec 55659750 34d40caed2 --a6a0ee codex`
+- **Status:** User asks about project status or wants to continue a roadmap → `npx --loglevel=error n45-ai@1.1.0 exec 55659750 42b0c53d35 --a6a0ee codex`
+<!-- n45:end -->
+

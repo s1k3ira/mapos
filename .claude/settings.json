@@ -1,0 +1,23 @@
+{
+  "disableWorkflows": true,
+  "permissions": {
+    "allow": [
+      "Bash(*/n45*)",
+      "Bash(*\\n45.exe*)",
+      "Bash(npx n45-ai*)",
+      "Bash(git *)",
+      "PowerShell(*/n45*)",
+      "PowerShell(*\\n45.exe*)",
+      "PowerShell(npx n45-ai*)",
+      "PowerShell(git *)",
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "NotebookEdit(./**)"
+    ],
+    "deny": [
+      "Edit(.n45/docs/**)",
+      "Edit(.n45/planning/**)"
+    ]
+  }
+}
