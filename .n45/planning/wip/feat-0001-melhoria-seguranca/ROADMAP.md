@@ -244,9 +244,10 @@ phases:
           persona: frontend
           status: done
           title: Login do painel e da área do cliente por status HTTP no módulo de login
-    - name: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
+    - completed_at: "2026-11-04 07:20:03"
+      name: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
       started_at: "2026-11-04 06:47:36"
-      status: in-progress
+      status: done
       tasks:
         - complexity: M
           deps:
@@ -277,6 +278,6 @@ phases:
           persona: backend
           status: done
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
-status: in-progress
-updated_at: "2026-11-04 07:16:28"
+status: validating
+updated_at: "2026-11-04 07:20:03"
 ---
