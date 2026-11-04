@@ -3,55 +3,55 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-04 06:56:49"
 criteria:
-    - done: false
+    - done: true
       test: grep -q 'webhooks/efi/' docs/webhooks-de-pagamento.md && grep -q 'webhooks/mercadopago' docs/webhooks-de-pagamento.md && grep -q 'webhooks/asaas' docs/webhooks-de-pagamento.md
       text: webhooks-de-pagamento.md traz as três rotas de webhook
-    - done: false
+    - done: true
       test: test $(grep -oE 'EFI_WEBHOOK_SECRET|MP_WEBHOOK_SECRET|ASAAS_WEBHOOK_TOKEN|WEBHOOK_RATE_LIMIT' docs/webhooks-de-pagamento.md | sort -u | wc -l) -eq 4
       text: webhooks-de-pagamento.md cita as quatro variáveis dos webhooks
-    - done: false
+    - done: true
       test: grep -qx '## Cadastrar a URL em cada gateway' docs/webhooks-de-pagamento.md && grep -qx '## HTTPS obrigatório' docs/webhooks-de-pagamento.md && grep -qx '## Respostas' docs/webhooks-de-pagamento.md && grep -qx '## Trocar um segredo' docs/webhooks-de-pagamento.md && grep -qx '## Esconder o caminho da Efí nos logs' docs/webhooks-de-pagamento.md && grep -qx '## Reprocessar um evento' docs/webhooks-de-pagamento.md && grep -qx '## Destravar a fila de e-mail' docs/webhooks-de-pagamento.md && grep -qx '## Conferir' docs/webhooks-de-pagamento.md
       text: webhooks-de-pagamento.md tem as seções de cadastro, HTTPS, respostas, troca de segredo, logs, reprocessar, fila e conferir
-    - done: false
+    - done: true
       test: grep -qF 'if=$loggable' docs/webhooks-de-pagamento.md && grep -qE 'SetEnvIf.*webhooks/efi/' docs/webhooks-de-pagamento.md && grep -qF 'env=!' docs/webhooks-de-pagamento.md
       text: Receitas de nginx (if=$loggable) e Apache (SetEnvIf + env=!) para tirar webhooks/efi/ do access log
-    - done: false
+    - done: true
       test: grep -qF 'recusado' docs/webhooks-de-pagamento.md && grep -qF '413' docs/webhooks-de-pagamento.md && grep -qF 'tente_novamente' docs/webhooks-de-pagamento.md
       text: Respostas documentadas incluem 401 recusado, 413 e 503 tente_novamente
-    - done: false
+    - done: true
       test: grep -qE 'DELETE FROM webhook_eventos WHERE gateway' docs/webhooks-de-pagamento.md && grep -qE "UPDATE email_queue SET status = 'pending', tentativas = 0" docs/webhooks-de-pagamento.md
       text: Reprocessar evento por SQL em webhook_eventos e destravar e-mail definitivo zerando tentativas
-    - done: false
+    - done: true
       test: grep -qF 'scripts/smoke-seguranca.sh' docs/webhooks-de-pagamento.md && grep -qF 'SMOKE_SEM_DOCKER' docs/webhooks-de-pagamento.md
       text: webhooks-de-pagamento.md aponta o smoke de segurança
-    - done: false
+    - done: true
       test: grep -qF 'client/refresh' docs/api-autenticacao.md && grep -qF 'client/logout' docs/api-autenticacao.md && grep -qF 'client/password' docs/api-autenticacao.md && grep -qF 'troca_de_senha_obrigatoria' docs/api-autenticacao.md
       text: api-autenticacao.md documenta refresh, logout e troca de senha do cliente e o 403 troca_de_senha_obrigatoria
-    - done: false
+    - done: true
       test: grep -qx '## 401 ou 403' docs/api-autenticacao.md && grep -qF 'senha_inicial' docs/api-autenticacao.md && grep -qF 'email_enviado' docs/api-autenticacao.md && grep -qF 'perPage' docs/api-autenticacao.md && grep -qF 'CLIENTE_OS_LIMITE_DIARIO' docs/api-autenticacao.md
       text: api-autenticacao.md documenta 401 x 403, senha_inicial, perPage e o limite de OS
-    - done: false
+    - done: true
       test: '! grep -nE ''dura o configurado|passa a dar .403|recebe .403. na hora'' docs/api-autenticacao.md'
       text: Afirmações antigas removidas de api-autenticacao.md (cliente 'dura o configurado' e token revogado/desativado dando 403)
-    - done: false
+    - done: true
       test: grep -qF 'mod_authz_core' docs/servidor-web.md && grep -qF 'Require all denied' docs/servidor-web.md && grep -qF 'default.template.conf' docs/servidor-web.md && grep -qF 'webhooks-de-pagamento.md' docs/servidor-web.md
       text: servidor-web.md documenta o .htaccess 2.4 e o template do nginx do Docker
-    - done: false
+    - done: true
       test: test $(grep -oE 'EFI_WEBHOOK_SECRET|MP_WEBHOOK_SECRET|ASAAS_WEBHOOK_TOKEN|WEBHOOK_RATE_LIMIT|CLIENTE_OS_LIMITE_DIARIO|PAYMENT_GATEWAYS_MERCADO_PAGO_TIMEOUT|PAYMENT_GATEWAYS_ASAAS_TIMEOUT|PAYMENT_GATEWAYS_EFI_TIMEOUT' docs/migracao-4x-para-5.md | sort -u | wc -l) -eq 8
       text: migracao-4x-para-5.md lista as oito variáveis novas
-    - done: false
+    - done: true
       test: test $(grep -oE '20261103000[0-4]00_[a-z_]+' docs/migracao-4x-para-5.md | sort -u | wc -l) -eq 5
       text: migracao-4x-para-5.md lista as cinco migrations pelo nome
-    - done: false
+    - done: true
       test: grep -qF 'marcarSenhasLegadas' docs/migracao-4x-para-5.md && grep -qE 'login/sa[i]r' docs/migracao-4x-para-5.md && grep -qF 'verificarLogin' docs/migracao-4x-para-5.md && grep -qF 'scripts/smoke-seguranca.sh' docs/migracao-4x-para-5.md
       text: migracao-4x-para-5.md cobre marcarSenhasLegadas, logout por POST, login por status e o smoke
-    - done: false
+    - done: true
       test: awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f && /^- \*\*Breaking:\*\*/{n++} END{exit n!=7}' CHANGELOG.md
       text: 'CHANGELOG: exatamente 7 linhas ''- **Breaking:**'' dentro de [Unreleased]'
-    - done: false
+    - done: true
       test: awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -qF 'perPage' && awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -qF 'CLIENTE_OS_LIMITE_DIARIO' && awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -qx '### Security'
       text: CHANGELOG [Unreleased] cita perPage, CLIENTE_OS_LIMITE_DIARIO e a seção Security
-    - done: false
+    - done: true
       test: grep -qx '## \[5.2.2\] - 2026-10-29' CHANGELOG.md && test $(grep -c '^## \[' CHANGELOG.md) -eq 139
       text: Seções de versões anteriores do CHANGELOG preservadas (mesmo número de títulos de versão)
 deps:
@@ -66,6 +66,8 @@ deps:
     - TASK-027
     - TASK-028
     - TASK-031
+diff_base: 44fd14da280fb98e7821bedf97d91385f3cfb236
+diff_tip: 89a3896c740b8e40fc998472d063b03040360e5f
 files:
     - docs/webhooks-de-pagamento.md
     - docs/api-autenticacao.md
@@ -74,17 +76,23 @@ files:
     - CHANGELOG.md
 id: TASK-032
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    Documentação entregue (sem código de produção):
+    - `docs/webhooks-de-pagamento.md`: rotas dos três webhooks, variáveis, respostas (200/401/405/413/429/503), HTTPS, troca de segredo, receitas nginx/Apache para não logar `webhooks/efi/`, reprocessar evento e destravar fila de e-mail por SQL, smoke `scripts/smoke-seguranca.sh`.
+    - `docs/api-autenticacao.md`: refresh/logout/password do cliente, 403 `troca_de_senha_obrigatoria`, 401 x 403, `senha_inicial`/`email_enviado`, `perPage`, limite diário de OS; afirmações antigas removidas.
+    - `docs/servidor-web.md`: `.htaccess` Apache 2.4 e template nginx do Docker.
+    - `docs/migracao-4x-para-5.md`: oito variáveis, cinco migrations, `marcarSenhasLegadas`, logout por POST, login por status, smoke.
+    - `CHANGELOG.md`: [Unreleased] com 7 linhas Breaking e seção Security.
 persona: backend
 phase: 'Phase 5 — Entrega: smoke de segurança, servidor e documentação'
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
     green: false
     red: false
     refactor: false
 title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
-updated_at: "2026-11-04 06:56:49"
+updated_at: "2026-11-04 07:16:47"
 ---
 ## Contexto
 

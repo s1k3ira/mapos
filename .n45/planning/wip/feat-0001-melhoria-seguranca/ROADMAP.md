@@ -275,8 +275,8 @@ phases:
             - TASK-028
           id: TASK-032
           persona: backend
-          status: pending
+          status: done
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-04 07:06:18"
+updated_at: "2026-11-04 07:16:28"
 ---
