@@ -19,7 +19,6 @@ class ClientOsController extends REST_Controller
         $this->load->helper('os');
         $this->load->helper('conecte');
         $this->load->library('Authorization_Token');
-        $this->load->library('pagination');
         $this->load->library('format');
         $this->load->model('mapos_model');
         $this->load->model('os_model');
@@ -53,9 +52,8 @@ class ClientOsController extends REST_Controller
     {
         $clientLogged = $this->logged_client();
         if (! $id) {
-            $config['per_page'] = $this->CI->db->get_where('configuracoes', ['config' => 'per_page'])->row_object()->valor;
-            $this->pagination->initialize($config);
-            $data['results'] = $this->Conecte_model->getOs('os', '*', '', $config['per_page'], $this->uri->segment(3), '', '', $this->logged_client()->usuario->idClientes);
+            [$limite, $offset] = $this->paginacaoDaApi();
+            $data['results'] = $this->Conecte_model->getOs('os', '*', '', $limite, $offset, '', '', $clientLogged->usuario->idClientes);
         
             $this->response([
                 'status' => true,

@@ -16,10 +16,8 @@ class ClientComprasController extends REST_Controller
         parent::__construct();
         $this->load->model('Conecte_model');
         $this->load->library('Authorization_Token');
-        $this->load->library('pagination');
         $this->load->library('format');
         $this->load->model('mapos_model');
-        $this->load->model('os_model');
     }
 
     public function index_get(int $idVendas = null)
@@ -27,10 +25,9 @@ class ClientComprasController extends REST_Controller
         $clientLogged = $this->logged_client();
 
         if ($idVendas == '') {
-            $config['per_page'] = $this->CI->db->get_where('configuracoes', ['config' => 'per_page'])->row_object()->valor;
-            $this->pagination->initialize($config);
+            [$limite, $offset] = $this->paginacaoDaApi();
 
-            $compras = $this->Conecte_model->getCompras('vendas', '*', '', $config['per_page'], $this->uri->segment(3), '', '', $this->logged_client()->usuario->idClientes);
+            $compras = $this->Conecte_model->getCompras('vendas', '*', '', $limite, $offset, '', '', $clientLogged->usuario->idClientes);
             if (empty($compras)) {
                 $this->response([
                     'status' => false,
@@ -72,7 +69,7 @@ class ClientComprasController extends REST_Controller
 
         $pixKey = $this->CI->db->get_where('configuracoes', ['config' => 'pix_key'])->row_object()->valor;
         $emitente = $this->mapos_model->getEmitente();
-        $qrCode = $this->os_model->getQrCode(
+        $qrCode = $this->vendas_model->getQrCode(
             $vendaId,
             $pixKey,
             $emitente
