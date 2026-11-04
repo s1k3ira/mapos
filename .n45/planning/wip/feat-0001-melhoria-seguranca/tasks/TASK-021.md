@@ -3,60 +3,62 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 22:55:28"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testProdutosEServicosSemPermissaoRespondem403 tests/Unit/ApiCadastrosTest.php
       text: Sem permissão, GET de produtos e DELETE de serviços respondem 403 com a mensagem da rota e nada é apagado
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testUsuariosSemPermissaoResponde403 tests/Unit/ApiCadastrosTest.php
       text: GET de usuários sem cUsuario responde 403
-    - done: false
+    - done: true
       test: '! grep -nE ''checkPermission|HTTP_UNAUTHORIZED'' application/controllers/api/v1/ProdutosController.php application/controllers/api/v1/ServicosController.php'
       text: ProdutosController e ServicosController não usam mais checkPermission com 401
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSemCUsuarioNaoEditaOutroUsuario tests/Unit/ApiSegurancaTest.php
       text: usuarioApiPlanoEdicao sem cUsuario editando outro usuário devolve status 403
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutDeUsuarioComGrupoForaDoAlcanceResponde403 tests/Unit/ApiCadastrosTest.php
       text: PUT de usuário com permissoes_id fora de podeDelegarGrupo responde 403 e o grupo não muda
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testUsuarioNaoExcluiASiMesmo tests/Unit/ApiCadastrosTest.php
       text: DELETE do próprio usuário responde 403 'Você não pode excluir o próprio usuário.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeUsuarioComFalhaResponde500 tests/Unit/ApiCadastrosTest.php
       text: DELETE de usuário com delete() falso responde 500 'Não foi possível excluir. Nada foi alterado.' sem log_app
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPaginacaoDeProdutosEServicos tests/Unit/ApiCadastrosTest.php
       text: perPage=1000000 devolve no máximo 100 produtos e perPage=abc em serviços responde 422
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPaginacaoDeUsuarios tests/Unit/ApiCadastrosTest.php
       text: page=2&perPage=10 em usuários chega ao model com limite 10 e offset 20
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeProdutoComFalhaResponde500ENaoApagaNada tests/Unit/ApiCadastrosTest.php
       text: DELETE de produto com falha simulada responde 500 e mantém o produto e suas linhas de produtos_os
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeProdutoEServicoApagaTudo tests/Unit/ApiCadastrosTest.php
       text: DELETE de produto e serviço existentes responde 200 e apaga o registro com as linhas filhas
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDeInexistenteResponde404 tests/Unit/ApiCadastrosTest.php
       text: DELETE de produto e serviço inexistentes responde 404
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostDeProdutoDevolveORegistroInserido tests/Unit/ApiCadastrosTest.php
       text: POST de produto devolve o registro do insert_id mesmo com outro produto de descrição parecida, e idProdutos do corpo é ignorado
-    - done: false
+    - done: true
       test: '! grep -n "descricao = ''" application/controllers/api/v1/ProdutosController.php application/controllers/api/v1/ServicosController.php'
       text: POST de produto e serviço não buscam mais o registro pela descrição
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostDeUsuarioComFalhaResponde500 tests/Unit/ApiCadastrosTest.php
       text: POST de usuário com add() falso responde 500 'Não foi possível adicionar o Usuário.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiCadastrosTest.php tests/Unit/ApiSegurancaTest.php
       text: Suítes da API de cadastros passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/api/v1/ProdutosController.php application/controllers/api/v1/ServicosController.php application/controllers/api/v1/UsuariosController.php application/helpers/api_helper.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-003
     - TASK-017
+diff_base: 26f71a085ce43bafea2b09538debf39483c37c14
+diff_tip: b676d45ea1229b0a3d40e1ae2a00e32655c2e130
 files:
     - application/controllers/api/v1/ProdutosController.php
     - application/controllers/api/v1/ServicosController.php
@@ -67,18 +69,27 @@ files:
 id: TASK-021
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — API do operador (produtos, serviços, usuários)**
+
+    - Falta de permissão em `GET/POST/PUT/DELETE` de `/api/v1/produtos`, `/api/v1/servicos` e `GET/POST/DELETE` de `/api/v1/usuarios` responde **403** `{status:false, message}` via `REST_Controller::exigirPermissao`; 401 fica só para token ausente/inválido.
+    - `usuarioApiPlanoEdicao()` (`application/helpers/api_helper.php`): "sem `cUsuario` editando outro usuário" → `status` 403.
+    - Listagens (`GET /produtos`, `/servicos`, `/usuarios` sem `search`): `paginacaoDaApi()` → `perPage` 1..100 (padrão 20, acima de 100 = 100), `page` >= 0; inválido → 422 `{status:false, message:'Parâmetros de paginação inválidos.', erros}`. Models recebem `(limite, offset)`.
+    - `POST /produtos` e `/servicos`: 201 com `result` = registro do `insert_id`; allow-list única por controller (`dadosDoProduto`), id do corpo ignorado.
+    - `DELETE /produtos/{id}` e `/servicos/{id}`: 404 `Produto/Serviço não encontrado.`; `excluirComDependentes()` falso → 500 `Não foi possível excluir. Nada foi alterado.`; verdadeiro → `log_app` + 200.
+    - `DELETE /usuarios/{id}`: 403 sem `cUsuario` ou ao excluir a si mesmo (`Você não pode excluir o próprio usuário.`); `delete()` falso → 500 `Não foi possível excluir. Nada foi alterado.` (log de erro, sem `log_app`); `PUT` com grupo fora de `podeDelegarGrupo()` segue 403.
+    - `POST /usuarios` com `add()` falso → 500 `Não foi possível adicionar o Usuário.`.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ApiCadastrosTest.php tests/Unit/ApiSegurancaTest.php tests/Unit/ApiBaseTest.php tests/Unit/UsuariosPermissoesTest.php
 title: 'API de produtos, serviços e usuários: 403, allow-list, paginação e exclusão'
-updated_at: "2026-11-03 22:55:28"
+updated_at: "2026-11-04 01:00:45"
 ---
 ## Contexto
 

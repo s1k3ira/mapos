@@ -3,60 +3,62 @@ checkpoint: null
 complexity: G
 created_at: "2026-11-03 22:59:29"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testLoginGuardaAVersaoDaSessao tests/Unit/AreaDoClienteSessaoTest.php
       text: Login do cliente grava cliente_sessao_versao com a sessao_versao do banco
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSessaoComVersaoAntigaEEncerrada tests/Unit/AreaDoClienteSessaoTest.php
       text: Sessão com versão diferente da do banco é encerrada com 'A senha desta conta foi alterada. Entre novamente.' e redirect mine
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testClienteExcluidoEncerraASessao|testFalhaNaRevalidacaoEncerraASessao' tests/Unit/AreaDoClienteSessaoTest.php
       text: Cliente excluído ou falha na consulta encerra a sessão com 'Sua sessão expirou. Entre novamente.' (fail-closed, com log 'cliente sessao falha id=')
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTrocaPendenteLevaParaDefinirSenha tests/Unit/AreaDoClienteSessaoTest.php
       text: Com senha_trocar 1, painel, os e conta redirecionam para mine/definirSenha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDefinirSenhaSoComTrocaPendente tests/Unit/AreaDoClienteSessaoTest.php
       text: GET definirSenha com troca pendente renderiza conecte/definir_senha e sem troca pendente vai para mine/painel
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDefinirSenhaValidaLiberaAArea tests/Unit/AreaDoClienteSessaoTest.php
       text: POST definirSenha válido zera senha_trocar, atualiza cliente_sessao_versao para a do banco, mantém a sessão válida, flash 'Senha definida.' e vai para mine/painel
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDefinirSenhaComNovaInvalidaNaoConfereAAtual tests/Unit/AreaDoClienteSessaoTest.php
       text: POST definirSenha com senha curta ou confirmação diferente devolve o erro do campo sem contar falha de confirmação
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDefinirSenhaConfereAAtualComLimite tests/Unit/AreaDoClienteSessaoTest.php
       text: POST definirSenha com senha atual errada devolve erros.senha_atual e conta 1 falha; nova igual à atual devolve erros.senha; bloqueado devolve _geral Limite_login::MENSAGEM
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testEditarDadosComSenhaDerrubaOutrasSessoes tests/Unit/AreaDoClienteSessaoTest.php
       text: Troca por editarDados passa por registrarTrocaDeSenha (versões +1, refresh cliente revogado) e a sessão atual continua válida; sem senha as versões não mudam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testTokenDeResetSoValeUmaVez tests/Unit/AreaDoClienteSessaoTest.php
       text: 'Duas chamadas a senhaSalvar com o mesmo token: só a primeira troca a senha e a segunda recebe ''Token inválido ou expirado. Solicite uma nova recuperação de senha.'''
-    - done: false
+    - done: true
       test: grep -qE "where\('token_utilizado', 0\)" application/models/Conecte_model.php
       text: Conecte_model::consumirTokenDeReset consome com UPDATE condicionado a token_utilizado = 0
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testAjaxSemSessaoNaAreaDoClienteResponde401|testAjaxComTrocaPendenteResponde403' tests/Unit/AreaDoClienteSessaoTest.php
       text: AJAX a Mine sem sessão responde 401 JSON com redirect site_url('mine') e flash 'Sua sessão expirou. Entre novamente.'; com troca pendente responde 403 com redirect mine/definirSenha
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter 'testAjaxSemSessaoNoPainelResponde401|testSemAjaxContinuaORedirect' tests/Unit/SessaoExpiradaAjaxTest.php
       text: AJAX ao painel sem sessão responde 401 JSON {result:false, message:'Sessão expirada', redirect:site_url('login')} e grava o flash; sem AJAX continua o redirect para login
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAjaxComSessaoEncerradaResponde401ComMotivo tests/Unit/SessaoExpiradaAjaxTest.php
       text: AJAX ao painel com sessão encerrada pela revalidação responde 401 JSON e o flash traz o motivo
-    - done: false
+    - done: true
       test: '! grep -nE "edit\(''clientes'', \[''senha''|resetSenhas_model->edit" application/controllers/Mine.php'
       text: Mine não grava mais a senha por edit() nem marca o token depois da troca
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/AreaDoClienteSessaoTest.php tests/Unit/SessaoExpiradaAjaxTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/SessaoELimiteTest.php tests/Unit/DefinirSenhaViewTest.php tests/Unit/ApiAutenticacaoTest.php tests/Unit/BancoDesatualizadoTest.php
       text: Suítes da área do cliente e de sessão passam
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/Mine.php application/models/Conecte_model.php application/core/MY_Controller.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-009
     - TASK-016
+diff_base: 8117395d266512aadab96fd4c04ebdb8df2c0403
+diff_tip: f8091ee6c62d7ff8832497b1587af87cf4eb239a
 files:
     - application/controllers/Mine.php
     - application/models/Conecte_model.php
@@ -66,18 +68,27 @@ files:
 id: TASK-024
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    ## Outcome TASK-024
+
+    - `Conecte_model::estadoDaSessao(int $idCliente): ?array` retorna `['sessao_versao' => int, 'senha_trocar' => int]`, ou `null` (cliente inexistente ou consulta falhou, com log `cliente sessao falha id=<id>`).
+    - `Conecte_model::consumirTokenDeReset(int $idToken): bool` faz `UPDATE ... WHERE id = ? AND token_utilizado = 0`; `true` só com `affected_rows() === 1`.
+    - `Mine`: sessão guarda `cliente_sessao_versao`. `clienteLogado(bool $permitirTrocaPendente = false)` revalida no banco a cada requisição (fail-closed). Sessão sem login, cliente excluído ou falha de consulta encerra com 'Sua sessão expirou. Entre novamente.'. Versão divergente encerra com 'A senha desta conta foi alterada. Entre novamente.'. Redirect para `mine`.
+    - `Mine::definirSenha()` (GET/POST) para `senha_trocar = 1`. Erros de campo não gastam tentativa do escopo `confirmacao`. Sucesso chama `registrarTrocaDeSenha(id, hash, false)`, atualiza a versão da sessão, flash 'Senha definida.' e redireciona para `mine/painel`. Com `senha_trocar = 1`, painel/os/conta redirecionam para `mine/definirSenha`.
+    - `editarDados` com senha e `senhaSalvar` passam por `registrarTrocaDeSenha`. `senhaSalvar` consome o token antes da troca; a segunda chamada recebe 'Token inválido ou expirado. Solicite uma nova recuperação de senha.'.
+    - AJAX em `Mine`: 401 JSON `{result:false,message:'Sessão expirada',redirect:site_url('mine')}` sem sessão; 403 JSON com `redirect` `mine/definirSenha` com troca pendente. Painel (`MY_Controller::sessaoExpirada`): 401 JSON com `redirect` `site_url('login')` e flash com o motivo; não AJAX continua redirect para `login`.
+    - Seams protegidos `irPara()`/`encerrar()` em `Mine` e `irPara()` em `MY_Controller`.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/AreaDoClienteSessaoTest.php tests/Unit/SessaoExpiradaAjaxTest.php tests/Unit/AreaDoClienteTest.php tests/Unit/SessaoELimiteTest.php tests/Unit/DefinirSenhaViewTest.php tests/Unit/BancoDesatualizadoTest.php
 title: 'Área do cliente: sessão revalidada, troca obrigatória, reset atômico e 401 em AJAX'
-updated_at: "2026-11-03 22:59:29"
+updated_at: "2026-11-04 00:54:14"
 ---
 ## Contexto
 

@@ -3,85 +3,95 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 22:56:34"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostSemSenhaDevolveSenhaInicialUmaVez tests/Unit/ApiClientesTest.php
       text: POST sem senha responde 201 com senha_inicial de 16 caracteres do alfabeto, email_enviado true, sem senha no result, Cache-Control no-store, senha_trocar 1, documento não é a senha e a senha não aparece em log
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostComFalhaNoEnvioInformaEmailEnviadoFalse tests/Unit/ApiClientesTest.php
       text: POST sem senha com falha no envio responde 201 com email_enviado false
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostComSenhaInformadaNaoDevolveSenha tests/Unit/ApiClientesTest.php
       text: POST com senha informada responde 201 sem senha_inicial e sem email_enviado, grava senha_trocar 1 e não chama o envio
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSenhaInicialNaoPassaPelaFila tests/Unit/ApiClientesTest.php
       text: POST com senha gerada não cria linha em email_queue
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPostIgnoraCamposForaDaAllowList tests/Unit/ApiClientesTest.php
       text: POST ignora senha_trocar, token_versao, sessao_versao e asaas_id do corpo
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testGetDoClienteNaoTrazSenhaInicial tests/Unit/ApiClientesTest.php
       text: GET do cliente criado não traz senha_inicial nem senha
-    - done: false
+    - done: true
       test: '! grep -nE "preg_replace\([^)]*documento.*\?:|\?: preg_replace" application/controllers/api/v1/ClientesController.php'
       text: O documento não é mais usado como senha na API
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSemPermissaoResponde403 tests/Unit/ApiClientesTest.php
       text: Sem vCliente o GET responde 403 e sem dCliente o DELETE responde 403 sem apagar
-    - done: false
+    - done: true
       test: '! grep -n ''HTTP_UNAUTHORIZED'' application/controllers/api/v1/ClientesController.php'
       text: ClientesController não responde mais 401 por falta de permissão
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPaginacaoDeClientes tests/Unit/ApiClientesTest.php
       text: perPage=1000000 devolve 100 clientes, perPage=0 responde 422 e page=1&perPage=5 chega ao model com offset 5
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutComSenhaDerrubaSessoesEExigeTroca tests/Unit/ApiClientesTest.php
       text: 'PUT com senha passa por registrarTrocaDeSenha: senha_trocar 1, sessao_versao e token_versao +1 e refresh tipo cliente revogado'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutComFalhaNaTrocaResponde500 tests/Unit/ApiClientesTest.php
       text: PUT com registrarTrocaDeSenha falso responde 500 'Não foi possível alterar a senha do cliente.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testPutSemSenhaNaoMexeNasVersoes tests/Unit/ApiClientesTest.php
       text: PUT sem senha mantém as versões e PUT com senha_trocar/token_versao no corpo não altera esses campos
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testClienteInexistenteResponde404 tests/Unit/ApiClientesTest.php
       text: PUT e DELETE de cliente inexistente respondem 404 'Cliente não encontrado.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoComFalhaNaoApagaNada tests/Unit/ApiClientesTest.php
       text: DELETE com falha simulada responde 500 'Não foi possível excluir. Nada foi alterado.' e mantém OS, vendas e o cliente
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testExclusaoDoClienteResponde200 tests/Unit/ApiClientesTest.php
       text: DELETE ok responde 200 e chama log_app
-    - done: false
+    - done: true
       test: grep -q 'excluirComDependentes(' application/controllers/api/v1/ClientesController.php && ! grep -nE 'removeClient(Os|Vendas)' application/controllers/api/v1/ClientesController.php
       text: A exclusão pela API usa excluirComDependentes e não mais removeClientOs/removeClientVendas
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/ApiClientesTest.php
       text: Suíte ApiClientesTest passa
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/api/v1/ClientesController.php
       text: PHPStan não sobe a baseline no arquivo da task
 deps:
     - TASK-003
     - TASK-009
     - TASK-019
+diff_base: 396259c855f89ac5431be6606b767d2a7a114bf2
+diff_tip: 26f71a085ce43bafea2b09538debf39483c37c14
 files:
     - application/controllers/api/v1/ClientesController.php
     - tests/Unit/ApiClientesTest.php
 id: TASK-022
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    **Backend — `application/controllers/api/v1/ClientesController.php`**
+
+    - `GET /api/v1/clientes?perPage&page&search` → 200 lista (sem `senha`) | 403 sem `vCliente` | 422 `Parâmetros de paginação inválidos.` (perPage 1..100, padrão 20).
+    - `GET /api/v1/clientes/{id}` → 200 detalhes sem `senha`/`senha_inicial`.
+    - `POST /api/v1/clientes` (`aCliente`) → 201 `result` sem `senha`; sem `senha` no corpo gera senha de 16 caracteres e devolve `result.senha_inicial` + `result.email_enviado` (envio síncrono, fora da `email_queue`); com `senha` informada não devolve nenhum dos dois; sempre `senha_trocar = 1`; header `Cache-Control: no-store`; `senha_trocar`/`token_versao`/`sessao_versao`/`asaas_id` ignorados do corpo | 400 validação | 403 | 500.
+    - `PUT /api/v1/clientes/{id}` (`eCliente`) → 200 | 400 documento inválido | 403 | 404 `Cliente não encontrado.` | 500 `Não foi possível alterar a senha do cliente.`; com `senha` usa `registrarTrocaDeSenha(id, hash, true)` (derruba sessões/refresh), sem `senha` não mexe nas versões.
+    - `DELETE /api/v1/clientes/{id}` (`dCliente`) → 200 `Cliente excluído com sucesso!` | 400 | 403 | 404 | 500 `Não foi possível excluir. Nada foi alterado.` via `Clientes_model::excluirComDependentes`.
+    - Símbolo protegido: `enviarSenhaInicial(object $cliente, string $senha): bool` (sobrescrevível em testes).
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/ApiClientesTest.php tests/Unit/ApiBaseTest.php tests/Unit/ApiSegurancaTest.php
 title: 'API de clientes: senha inicial, allow-list, paginação e exclusão'
-updated_at: "2026-11-03 22:59:46"
+updated_at: "2026-11-04 00:57:12"
 ---
 ## Contexto
 

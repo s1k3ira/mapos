@@ -141,7 +141,7 @@ phases:
             - TASK-001
           id: TASK-018
           persona: backend
-          status: pending
+          status: done
           title: 2FA com confirmação de senha limitada e retornos do Mapos_model
         - complexity: G
           deps:
@@ -165,7 +165,7 @@ phases:
             - TASK-017
           id: TASK-021
           persona: backend
-          status: pending
+          status: done
           title: 'API de produtos, serviços e usuários: 403, allow-list, paginação e exclusão'
         - complexity: M
           deps:
@@ -174,7 +174,7 @@ phases:
             - TASK-019
           id: TASK-022
           persona: backend
-          status: pending
+          status: done
           title: 'API de clientes: senha inicial, allow-list, paginação e exclusão'
         - complexity: G
           deps:
@@ -190,7 +190,7 @@ phases:
             - TASK-016
           id: TASK-024
           persona: backend
-          status: pending
+          status: done
           title: 'Área do cliente: sessão revalidada, troca obrigatória, reset atômico e 401 em AJAX'
     - name: Phase 4 — Login por status, logout seguro e limite de OS do cliente
       status: pending
@@ -274,5 +274,5 @@ phases:
           status: pending
           title: Documentação de webhooks, API, servidor web, migração e CHANGELOG
 status: in-progress
-updated_at: "2026-11-03 23:49:01"
+updated_at: "2026-11-04 01:00:22"
 ---

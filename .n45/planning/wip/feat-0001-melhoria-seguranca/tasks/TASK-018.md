@@ -3,47 +3,49 @@ checkpoint: null
 complexity: M
 created_at: "2026-11-03 22:51:24"
 criteria:
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testAtivacaoComSenhaErradaContaFalhaENaoConfereCodigo tests/Unit/DoisFatoresConfirmacaoTest.php
       text: ativarDoisFatores com senha errada devolve senha_ativar 'A senha não confere.', registra 1 falha no escopo confirmacao e não chama Totp::verificar
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSextaTentativaBloqueadaNemConfereOCodigo tests/Unit/DoisFatoresConfirmacaoTest.php
       text: Após 5 senhas erradas, a 6ª tentativa (senha certa) devolve senha_ativar = Limite_login::MENSAGEM e Totp::verificar é chamado 0 vezes
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testCodigoErradoNaAtivacaoContaFalhaDeConfirmacao tests/Unit/DoisFatoresConfirmacaoTest.php
       text: Senha certa com código TOTP errado devolve o erro codigo e registra 1 falha no escopo confirmacao para o e-mail do usuário
-    - done: false
+    - done: true
       test: '! grep -n ''password_verify'' application/controllers/Mapos.php'
       text: ativarDoisFatores não confere mais a senha com password_verify direto
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDesativarTotpDevolveTrueEApagaTudo tests/Unit/DoisFatoresConfirmacaoTest.php
       text: Mapos_model::desativarTotp(1) devolve true e zera totp_secreto, totp_ativado_em e os códigos de recuperação
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testFalhaAoDesativarTotpReverteELoga tests/Unit/DoisFatoresConfirmacaoTest.php
       text: desativarTotp com falha no DELETE dos códigos devolve false, mantém totp_secreto preenchido e loga 'transacao rollback operacao=desativar_totp id=1'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testDesativarDoisFatoresComFalhaMostraErro tests/Unit/DoisFatoresConfirmacaoTest.php
       text: desativarDoisFatores com desativarTotp falso devolve _geral 'Não foi possível desativar. Tente de novo.' sem flash de sucesso
-    - done: false
+    - done: true
       test: grep -qE 'if \(! \$this->mapos_model->desativarTotp\(' application/controllers/Usuarios.php && grep -q 'Não foi possível redefinir o 2FA. Tente de novo.' application/controllers/Usuarios.php
       text: Usuarios confere o retorno de desativarTotp e mostra 'Não foi possível redefinir o 2FA. Tente de novo.'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSalvarConfiguracaoComFalhaReverteTudo tests/Unit/DoisFatoresConfirmacaoTest.php
       text: saveConfiguracao com falha no UPDATE de configuracoes devolve false, não altera nenhuma das duas chaves e loga 'transacao rollback operacao=salvar_configuracao'
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit --filter testSalvarConfiguracaoInsereChaveNova tests/Unit/DoisFatoresConfirmacaoTest.php
       text: saveConfiguracao insere a chave inexistente e devolve true (upsert mantido)
-    - done: false
+    - done: true
       test: '! grep -nE ''catch \(Exception \$e\)'' application/models/Mapos_model.php'
       text: saveConfiguracao não engole mais erro em catch (Exception)
-    - done: false
+    - done: true
       test: application/vendor/bin/phpunit tests/Unit/DoisFatoresConfirmacaoTest.php tests/Unit/DoisFatoresTest.php
       text: Suítes de 2FA passam inteiras
-    - done: false
+    - done: true
       test: application/vendor/bin/phpstan analyse --memory-limit=1G --no-progress application/controllers/Mapos.php application/models/Mapos_model.php application/controllers/Usuarios.php
       text: PHPStan não sobe a baseline nos arquivos da task
 deps:
     - TASK-001
+diff_base: f8091ee6c62d7ff8832497b1587af87cf4eb239a
+diff_tip: 396259c855f89ac5431be6606b767d2a7a114bf2
 files:
     - application/controllers/Mapos.php
     - application/models/Mapos_model.php
@@ -53,18 +55,25 @@ files:
 id: TASK-018
 linter: composer analyse
 n45_version: 1.1.0
-outcome: ""
+outcome: |
+    # TASK-018 — Outcome
+
+    - `Mapos::ativarDoisFatores` (POST) confere a senha via `confirmarSenhaDoUsuario()` (escopo `confirmacao`): senha errada -> `senha_ativar` = `A senha não confere.`; bloqueado -> `Limite_login::MENSAGEM` sem chamar `Totp::verificar`; código TOTP errado -> erro `codigo` + `registrarFalha('confirmacao', email, ip)`.
+    - `Mapos_model::desativarTotp(int $idUsuario): bool` — transacional; `false` + log `error` `transacao rollback operacao=desativar_totp id=<id>` em falha.
+    - `Mapos_model::saveConfiguracao(array): bool` — transacional com upsert mantido; `false` + log `transacao rollback operacao=salvar_configuracao chave=<chave>` em falha.
+    - `Mapos::desativarDoisFatores` mostra `_geral` = `Não foi possível desativar. Tente de novo.`; `Usuarios` mostra flash `Não foi possível redefinir o 2FA. Tente de novo.` e redireciona para `usuarios/editar/<id>`.
+    - `Mapos::usuarioDoDoisFatores` e `telaDoisFatores` passaram a `protected`.
 persona: backend
 phase: Phase 3 — Primeiro acesso do cliente e APIs do operador e do cliente
 roadmap: feat-0001-melhoria-seguranca
-status: pending
+status: done
 tdd:
-    green: false
-    red: false
-    refactor: false
+    green: true
+    red: true
+    refactor: true
 tests: application/vendor/bin/phpunit tests/Unit/DoisFatoresConfirmacaoTest.php tests/Unit/DoisFatoresTest.php tests/Unit/ConfiguracoesTest.php tests/Unit/UsuariosPermissoesTest.php
 title: 2FA com confirmação de senha limitada e retornos do Mapos_model
-updated_at: "2026-11-03 22:51:24"
+updated_at: "2026-11-04 00:56:21"
 ---
 ## Contexto
 
