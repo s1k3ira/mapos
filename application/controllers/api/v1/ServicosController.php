@@ -4,7 +4,7 @@ if (! defined('BASEPATH')) {
     exit('No direct script access allowed');
 }
 
-require APPPATH . 'libraries/REST_Controller.php';
+require_once APPPATH . 'libraries/REST_Controller.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 class ServicosController extends REST_Controller
 {

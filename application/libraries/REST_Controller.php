@@ -2,7 +2,7 @@
 
 defined('BASEPATH') or exit('No direct script access allowed');
 
-require APPPATH . 'libraries/Format.php';
+require_once APPPATH . 'libraries/Format.php'; // @phpstan-ignore requireOnce.fileNotFound
 
 /**
  * CodeIgniter Rest Controller
