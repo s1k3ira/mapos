@@ -74,8 +74,8 @@ final class RevisaoDeSegurancaTest extends MaposTestCase
     {
         $ativar = $this->metodo('application/controllers/Mapos.php', 'ativarDoisFatores');
 
-        $this->assertStringContainsString("password_verify((string) \$this->input->post('senha'), \$usuario->senha)", $ativar);
-        $this->assertLessThan(strpos($ativar, '$this->totp->verificar('), strpos($ativar, 'password_verify'), 'A senha vem antes do código.');
+        $this->assertStringContainsString("confirmarSenhaDoUsuario(\$usuario, (string) \$this->input->post('senha'))", $ativar);
+        $this->assertLessThan(strpos($ativar, '$this->totp->verificar('), strpos($ativar, 'confirmarSenhaDoUsuario'), 'A senha vem antes do código.');
         $this->assertStringContainsString("'name' => 'senha'", $this->fonte('application/views/mapos/doisFatores.php'));
     }
 }

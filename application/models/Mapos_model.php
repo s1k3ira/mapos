@@ -474,12 +474,28 @@ class Mapos_model extends CI_Model
         }
     }
 
-    public function desativarTotp(int $idUsuario): void
+    /** true: gravado; false: nada mudou (rollback e log). */
+    public function desativarTotp(int $idUsuario): bool
     {
-        $this->db->trans_start();
-        $this->db->where('idUsuarios', $idUsuario)->update('usuarios', ['totp_secreto' => null, 'totp_ativado_em' => null, 'totp_ultimo_passo' => null]);
-        $this->db->where('usuario_id', $idUsuario)->delete('usuarios_codigos_recuperacao');
-        $this->db->trans_complete();
+        $this->db->trans_begin();
+
+        try {
+            $this->db->where('idUsuarios', $idUsuario)->update('usuarios', ['totp_secreto' => null, 'totp_ativado_em' => null, 'totp_ultimo_passo' => null]);
+            $this->db->where('usuario_id', $idUsuario)->delete('usuarios_codigos_recuperacao');
+
+            if ($this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
+        }
+
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=desativar_totp id=%d', $idUsuario));
+
+        return false;
     }
 
     /** Grava a janela aceita só se for maior que a última: o mesmo código não vale duas vezes, nem em duas requisições juntas. */
@@ -520,26 +536,42 @@ class Mapos_model extends CI_Model
      */
     public function saveConfiguracao($data)
     {
+        $this->db->trans_begin();
+        $chave = '';
+
         try {
-            foreach ($data as $key => $valor) {
+            foreach ($data as $chave => $valor) {
                 // Upsert: um banco antigo (instalado pelo banco.sql antes das
                 // migrations de tema) pode não ter a linha da config. Um UPDATE
                 // puro não casaria nada e a configuração nunca seria gravada,
                 // por isso insere quando a linha ainda não existe.
-                $existe = $this->db->where('config', $key)->count_all_results('configuracoes') > 0;
+                $existe = $this->db->where('config', $chave)->count_all_results('configuracoes') > 0;
 
                 if ($existe) {
                     $this->db->set('valor', $valor);
-                    $this->db->where('config', $key);
-                    $this->db->update('configuracoes');
+                    $this->db->where('config', $chave);
+                    $gravou = $this->db->update('configuracoes');
                 } else {
-                    $this->db->insert('configuracoes', ['config' => $key, 'valor' => $valor]);
+                    $gravou = $this->db->insert('configuracoes', ['config' => $chave, 'valor' => $valor]);
+                }
+
+                if ($gravou === false) {
+                    break;
                 }
             }
-        } catch (Exception $e) {
-            return false;
+
+            if (($gravou ?? true) !== false && $this->db->trans_status() !== false) {
+                $this->db->trans_commit();
+
+                return true;
+            }
+        } catch (\Throwable $e) {
+            // segue para o rollback
         }
 
-        return true;
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=salvar_configuracao chave=%s', $chave));
+
+        return false;
     }
 }
