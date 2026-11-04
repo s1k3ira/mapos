@@ -236,3 +236,47 @@ if (! function_exists('conecteReferenciaDaCobranca')) {
         return ['label' => 'Cobrança ' . (string) ($cobranca->charge_id ?: $cobranca->idCobranca), 'href' => null];
     }
 }
+
+if (! function_exists('clienteOsLimiteDiario')) {
+    /** Aberturas de OS por dia que cada cliente pode fazer (CLIENTE_OS_LIMITE_DIARIO; padrão 10; 0 desliga). */
+    function clienteOsLimiteDiario(): int
+    {
+        $valor = trim((string) ($_ENV['CLIENTE_OS_LIMITE_DIARIO'] ?? ''));
+
+        return ctype_digit($valor) ? (int) $valor : 10;
+    }
+}
+
+if (! function_exists('segundosAteAmanha')) {
+    /** Segundos até 00:00 do dia seguinte, no fuso padrão do PHP (APP_TIMEZONE). */
+    function segundosAteAmanha(?int $agora = null): int
+    {
+        $agora ??= time();
+
+        return max(1, strtotime('tomorrow', $agora) - $agora);
+    }
+}
+
+if (! function_exists('conecteErrosDaNovaOs')) {
+    /**
+     * Erros por campo da abertura de OS pela API do cliente.
+     *
+     * @param  array<string, mixed>  $dados
+     * @return array<string, string>
+     */
+    function conecteErrosDaNovaOs(array $dados): array
+    {
+        $erros = [];
+        $texto = static fn (string $campo): string => is_string($dados[$campo] ?? null) ? trim($dados[$campo]) : '';
+
+        foreach (['descricaoProduto', 'defeito', 'observacoes'] as $campo) {
+            if ($campo === 'descricaoProduto' && $texto($campo) === '') {
+                $erros[$campo] = 'Informe o equipamento ou serviço.';
+            } elseif (mb_strlen($texto($campo)) > 2000) {
+                $erros[$campo] = 'Use no máximo 2000 caracteres.';
+            }
+        }
+
+        return $erros;
+    }
+}

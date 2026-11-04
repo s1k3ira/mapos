@@ -543,7 +543,7 @@ class Mine extends CI_Controller
                 ['field' => 'observacoes', 'label' => 'Observações', 'rules' => 'trim|max_length[2000]'],
             ]);
 
-            $tecnico = $erros === [] ? $this->tecnicoParaNovaOs() : null;
+            $tecnico = $erros === [] ? $this->Conecte_model->tecnicoParaNovaOs() : null;
             if ($erros === [] && $tecnico === null) {
                 $erros['_geral'] = 'Não foi possível abrir a OS agora. Fale com a assistência.';
             }
@@ -552,7 +552,6 @@ class Mine extends CI_Controller
                 $texto = fn (string $campo) => osTextoParaGravar(is_string($this->input->post($campo)) ? $this->input->post($campo) : '');
                 $dados = [
                     'dataInicial' => date('Y-m-d'),
-                    'clientes_id' => $idCliente,
                     'usuarios_id' => $tecnico,
                     'dataFinal' => date('Y-m-d'),
                     'descricaoProduto' => $texto('descricaoProduto'),
@@ -562,25 +561,18 @@ class Mine extends CI_Controller
                     'faturado' => 0,
                 ];
 
-                $idOs = $this->Conecte_model->add('os', $dados, true);
-                if (is_numeric($idOs)) {
-                    $this->load->model('mapos_model');
-                    $this->load->model('usuarios_model');
-                    $this->load->model('os_model');
-
-                    // Histórico de status da OS (#2842); sem usuário = aberta pelo cliente.
-                    $this->os_model->registrarStatus((int) $idOs, null, 'Aberto', null);
-
-                    $remetentes = array_map(static fn ($usuario) => $usuario->email, $this->usuarios_model->getAll());
-                    $remetentes[] = (string) $this->session->userdata('email');
-
-                    $this->enviarOsPorEmail($idOs, $remetentes, 'Nova Ordem de Serviço #' . $idOs . ' - Criada pelo Cliente');
+                $resultado = $this->Conecte_model->abrirOsDoCliente($idCliente, $dados, clienteOsLimiteDiario());
+                if ($resultado['ok']) {
+                    $idOs = $resultado['id'];
+                    $this->notificarEquipeDaNovaOs($idOs);
                     $this->session->set_flashdata('success', 'OS #' . $idOs . ' aberta. A assistência vai entrar em contato.');
 
                     return redirect('mine/visualizarOs/' . $idOs);
                 }
 
-                $erros['_geral'] = 'Não foi possível abrir a OS. Tente de novo.';
+                $erros['_geral'] = $resultado['motivo'] === 'limite'
+                    ? Conecte_model::LIMITE_OS_MENSAGEM
+                    : 'Não foi possível abrir a OS. Tente de novo.';
             }
         }
 
@@ -588,6 +580,18 @@ class Mine extends CI_Controller
             'valores' => array_map(fn ($campo) => is_string($this->input->post($campo)) ? $this->input->post($campo) : '', ['descricaoProduto' => 'descricaoProduto', 'defeito' => 'defeito', 'observacoes' => 'observacoes']),
             'erros' => $erros,
         ]);
+    }
+
+    /** E-mail da nova OS para a equipe (e para o próprio cliente). */
+    protected function notificarEquipeDaNovaOs(int $idOs): void
+    {
+        $this->load->model('mapos_model');
+        $this->load->model('usuarios_model');
+
+        $remetentes = array_map(static fn ($usuario) => $usuario->email, $this->usuarios_model->getAll());
+        $remetentes[] = (string) $this->session->userdata('email');
+
+        $this->enviarOsPorEmail($idOs, $remetentes, 'Nova Ordem de Serviço #' . $idOs . ' - Criada pelo Cliente');
     }
 
     public function compras()
@@ -1027,22 +1031,6 @@ class Mine extends CI_Controller
     private function configuracao(string $nome): string
     {
         return $this->configuracoes()[$nome] ?? '';
-    }
-
-    /**
-     * Técnico que recebe a OS aberta pelo cliente: o com menos OS; sem OS no
-     * sistema, o primeiro usuário ativo.
-     */
-    private function tecnicoParaNovaOs(): ?int
-    {
-        $usuario = $this->db->query('SELECT usuarios_id, count(*) as down FROM os GROUP BY usuarios_id ORDER BY down LIMIT 1')->row();
-        if ($usuario !== null && $usuario->usuarios_id) {
-            return (int) $usuario->usuarios_id;
-        }
-
-        $usuario = $this->db->where('situacao', 1)->limit(1)->get('usuarios')->row();
-
-        return $usuario ? (int) $usuario->idUsuarios : null;
     }
 
     private function validarCPF($cpf)

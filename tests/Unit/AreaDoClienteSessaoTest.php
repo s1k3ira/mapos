@@ -45,6 +45,10 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
 
     private string $sessionIdAnterior = '';
 
+    private mixed $limiteDeOsAnterior = null;
+
+    private bool $tinhaLimiteDeOs = false;
+
     private ?SessaoDeTeste $sessaoDoModelo = null;
 
     protected function setUp(): void
@@ -54,6 +58,15 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
         // O clienteLogado() exige uma sessão PHP aberta, como no servidor.
         $this->sessionIdAnterior = session_id();
         session_id('sessao-de-teste');
+
+        $this->tinhaLimiteDeOs = array_key_exists('CLIENTE_OS_LIMITE_DIARIO', $_ENV);
+        $this->limiteDeOsAnterior = $_ENV['CLIENTE_OS_LIMITE_DIARIO'] ?? null;
+        unset($_ENV['CLIENTE_OS_LIMITE_DIARIO']);
+
+        $this->db->query('CREATE TABLE os (idOs INTEGER PRIMARY KEY AUTOINCREMENT, clientes_id INTEGER, usuarios_id INTEGER, dataInicial TEXT, dataFinal TEXT, descricaoProduto TEXT, defeito TEXT, status TEXT, observacoes TEXT, faturado INTEGER)');
+        $this->db->query('CREATE TABLE os_historico (idHistorico INTEGER PRIMARY KEY AUTOINCREMENT, os_id INTEGER, status_anterior TEXT, status_novo TEXT, usuarios_id INTEGER, data_hora TEXT)');
+        $this->db->query('CREATE TABLE usuarios (idUsuarios INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, situacao INTEGER NOT NULL DEFAULT 1)');
+        $this->db->query("INSERT INTO usuarios (idUsuarios, nome, situacao) VALUES (3, 'Tec', 1)");
 
         $this->db->query('CREATE TABLE clientes (idClientes INTEGER PRIMARY KEY AUTOINCREMENT, nomeCliente TEXT, contato TEXT, documento TEXT, telefone TEXT, celular TEXT, email TEXT,
             cep TEXT, rua TEXT, numero TEXT, complemento TEXT, bairro TEXT, cidade TEXT, estado TEXT, pessoa_fisica INTEGER, fornecedor INTEGER, senha TEXT,
@@ -66,6 +79,12 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
 
     protected function tearDown(): void
     {
+        if ($this->tinhaLimiteDeOs) {
+            $_ENV['CLIENTE_OS_LIMITE_DIARIO'] = $this->limiteDeOsAnterior;
+        } else {
+            unset($_ENV['CLIENTE_OS_LIMITE_DIARIO']);
+        }
+
         session_id($this->sessionIdAnterior);
         parent::tearDown();
     }
@@ -592,6 +611,65 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
         $this->assertNull($mine->load->view);
     }
 
+    // --- Abertura de OS pelo cliente: limite diário ---------------------------------------------
+
+    /** Roda adicionarOs() até o fim, inclusive o redirect() que lança RuntimeException. */
+    private function abrirOs(MineTestavel $mine): ?string
+    {
+        $mine->output->limpar();
+        $destino = null;
+        try {
+            $mine->adicionarOs();
+        } catch (RuntimeException $e) {
+            $destino = $e->getMessage();
+        }
+
+        return $destino;
+    }
+
+    private function aberturaDoClienteHoje(int $cliente): void
+    {
+        $this->db->query("INSERT INTO os (clientes_id, usuarios_id, status) VALUES (?, 3, 'Aberto')", [$cliente]);
+        $this->db->query(
+            "INSERT INTO os_historico (os_id, status_anterior, status_novo, usuarios_id, data_hora) VALUES (?, NULL, 'Aberto', NULL, ?)",
+            [(int) $this->db->insert_id(), date('Y-m-d') . ' 00:00:00']
+        );
+    }
+
+    public function testAdicionarOsNoLimiteMostraAMensagem(): void
+    {
+        $_ENV['CLIENTE_OS_LIMITE_DIARIO'] = '2';
+        $this->cliente();
+        $this->aberturaDoClienteHoje(5);
+        $this->aberturaDoClienteHoje(5);
+        $mine = $this->mine($this->sessaoDoCliente(), 'POST', ['descricaoProduto' => 'Notebook não liga']);
+
+        $destino = $this->abrirOs($mine);
+
+        $this->assertNull($destino);
+        $this->assertSame('conecte/adicionarOs', $mine->load->dados['view']);
+        $this->assertSame('Limite diário de aberturas atingido. Tente novamente amanhã ou fale com a assistência.', $mine->load->dados['erros']['_geral']);
+        $this->assertSame('Notebook não liga', $mine->load->dados['valores']['descricaoProduto']);
+        $this->assertSame(2, $this->db->count_all('os'));
+        $this->assertSame([], $mine->notificadas);
+    }
+
+    public function testAdicionarOsAbaixoDoLimiteCriaENotifica(): void
+    {
+        $_ENV['CLIENTE_OS_LIMITE_DIARIO'] = '2';
+        $this->cliente();
+        $this->aberturaDoClienteHoje(5);
+        $mine = $this->mine($this->sessaoDoCliente(), 'POST', ['descricaoProduto' => 'Notebook não liga']);
+
+        $destino = $this->abrirOs($mine);
+
+        $this->assertSame('redirect:mine/visualizarOs/2', $destino);
+        $this->assertSame(2, $this->db->count_all('os'));
+        $this->assertSame(1, (int) $this->db->query('SELECT COUNT(*) AS total FROM os_historico WHERE os_id = 2')->row()->total);
+        $this->assertSame([2], $mine->notificadas);
+        $this->assertSame('OS #2 aberta. A assistência vai entrar em contato.', $mine->session->flash['success']);
+    }
+
     // --- Código ------------------------------------------------------------------------------
 
     public function testMineNaoGravaMaisASenhaPorEditNemMarcaOTokenDepois(): void
@@ -607,6 +685,12 @@ final class AreaDoClienteSessaoTest extends MaposTestCase
 class ConecteModelTestavel extends Conecte_model
 {
     public $session;
+
+    // SQLite não tem SELECT ... FOR UPDATE.
+    protected function travarCliente(int $idCliente): bool
+    {
+        return $this->db->query('SELECT idClientes FROM clientes WHERE idClientes = ?', [$idCliente])->row() !== null;
+    }
 }
 
 final class ParadaDoTeste extends RuntimeException
@@ -867,6 +951,14 @@ final class MineTestavel extends Mine
     public $security;
 
     public ?string $destino = null;
+
+    /** @var list<int> */
+    public array $notificadas = [];
+
+    protected function notificarEquipeDaNovaOs(int $idOs): void
+    {
+        $this->notificadas[] = $idOs;
+    }
 
     protected function irPara(string $rota)
     {

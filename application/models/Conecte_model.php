@@ -14,6 +14,111 @@ class Conecte_model extends CI_Model
      */
     private const USUARIO_CAMPOS_PUBLICOS = 'usuarios.idUsuarios, usuarios.nome, usuarios.email, usuarios.telefone, usuarios.celular';
 
+    public const LIMITE_OS_MENSAGEM = 'Limite diário de aberturas atingido. Tente novamente amanhã ou fale com a assistência.';
+
+    /** Aberturas de OS pelo próprio cliente desde 00:00 de hoje (fuso APP_TIMEZONE). */
+    public function aberturasDeOsHoje(int $idCliente): int
+    {
+        if (! $this->db->table_exists('os_historico')) {
+            return 0;
+        }
+
+        $linha = $this->db->query(
+            'SELECT COUNT(*) AS total FROM os_historico h JOIN os ON os.idOs = h.os_id'
+            . ' WHERE os.clientes_id = ? AND h.usuarios_id IS NULL AND h.status_anterior IS NULL'
+            . " AND h.status_novo = 'Aberto' AND h.data_hora >= ?",
+            [$idCliente, date('Y-m-d 00:00:00')]
+        );
+
+        return $linha ? (int) ($linha->row()->total ?? 0) : 0;
+    }
+
+    /** Trava a linha do cliente até o fim da transação: serializa aberturas simultâneas. */
+    protected function travarCliente(int $idCliente): bool
+    {
+        $consulta = $this->db->query('SELECT idClientes FROM clientes WHERE idClientes = ? FOR UPDATE', [$idCliente]);
+
+        return $consulta !== false && $consulta->row() !== null;
+    }
+
+    /**
+     * Abre a OS do cliente respeitando o limite diário, de forma atômica: lock
+     * da linha do cliente, contagem, OS e histórico na mesma transação.
+     *
+     * @param  array<string, mixed>  $dados
+     * @return array{ok: true, id: int}|array{ok: false, motivo: string}
+     */
+    public function abrirOsDoCliente(int $idCliente, array $dados, int $limite): array
+    {
+        $this->db->trans_begin();
+
+        try {
+            if (! $this->travarCliente($idCliente)) {
+                return $this->desfazerAberturaDeOs($idCliente);
+            }
+
+            if ($limite > 0 && $this->aberturasDeOsHoje($idCliente) >= $limite) {
+                $this->db->trans_rollback();
+
+                return ['ok' => false, 'motivo' => 'limite'];
+            }
+
+            $dados['clientes_id'] = $idCliente;
+            if (! $this->db->insert('os', $dados)) {
+                return $this->desfazerAberturaDeOs($idCliente);
+            }
+            $id = (int) $this->db->insert_id();
+
+            if ($this->db->table_exists('os_historico')) {
+                $historico = $this->db->insert('os_historico', [
+                    'os_id' => $id,
+                    'status_anterior' => null,
+                    'status_novo' => 'Aberto',
+                    'usuarios_id' => null,
+                    'data_hora' => date('Y-m-d H:i:s'),
+                ]);
+                if (! $historico) {
+                    return $this->desfazerAberturaDeOs($idCliente);
+                }
+            }
+
+            if ($this->db->trans_status() === false) {
+                return $this->desfazerAberturaDeOs($idCliente);
+            }
+
+            $this->db->trans_commit();
+
+            return ['ok' => true, 'id' => $id];
+        } catch (\Throwable) {
+            return $this->desfazerAberturaDeOs($idCliente);
+        }
+    }
+
+    /** @return array{ok: false, motivo: string} */
+    private function desfazerAberturaDeOs(int $idCliente): array
+    {
+        $this->db->trans_rollback();
+        log_message('error', sprintf('transacao rollback operacao=abrir_os_cliente id=%d', $idCliente));
+
+        return ['ok' => false, 'motivo' => 'erro'];
+    }
+
+    /**
+     * Técnico que recebe a OS aberta pelo cliente: o com menos OS; sem OS no
+     * sistema, o primeiro usuário ativo.
+     */
+    public function tecnicoParaNovaOs(): ?int
+    {
+        $usuario = $this->db->query('SELECT usuarios_id, count(*) as down FROM os GROUP BY usuarios_id ORDER BY down LIMIT 1')->row();
+        if ($usuario !== null && $usuario->usuarios_id) {
+            return (int) $usuario->usuarios_id;
+        }
+
+        $usuario = $this->db->where('situacao', 1)->limit(1)->get('usuarios')->row();
+
+        return $usuario ? (int) $usuario->idUsuarios : null;
+    }
+
     public function add($table, $data, $returnId = false)
     {
         $this->db->insert($table, $data);
